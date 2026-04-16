@@ -40,13 +40,31 @@ jobs:
         if: env.VSCE_PAT != ''
         env:
           VSCE_PAT: ${{ secrets.VSCE_PAT }}
-        run: npx vsce publish --pat "$VSCE_PAT" --no-dependencies
+        run: |
+          set +e
+          output=$(npx vsce publish --pat "$VSCE_PAT" --no-dependencies 2>&1)
+          status=$?
+          printf '%s\n' "$output"
+          if [ "$status" -ne 0 ] && printf '%s' "$output" | grep -qiE 'already (exists|published)'; then
+            echo "VS Code Marketplace already has this version — treating as success so Open VSX can still publish."
+            exit 0
+          fi
+          exit "$status"
 
       - name: Publish to Open VSX
         if: env.OVSX_PAT != ''
         env:
           OVSX_PAT: ${{ secrets.OVSX_PAT }}
-        run: npx ovsx publish cursor-budi.vsix --pat "$OVSX_PAT"
+        run: |
+          set +e
+          output=$(npx ovsx publish cursor-budi.vsix --pat "$OVSX_PAT" 2>&1)
+          status=$?
+          printf '%s\n' "$output"
+          if [ "$status" -ne 0 ] && printf '%s' "$output" | grep -qiE 'already (exists|published)'; then
+            echo "Open VSX already has this version — treating as success."
+            exit 0
+          fi
+          exit "$status"
 
       - name: Upload vsix to release
         env:
