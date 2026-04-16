@@ -2,7 +2,7 @@
   "name": "budi",
   "displayName": "budi — AI Coding Cost Tracker",
   "description": "Live cost analytics for AI coding agents. See session cost, health, and spending trends right in the status bar.",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "publisher": "siropkin",
   "license": "MIT",
   "repository": {
