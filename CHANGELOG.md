@@ -3,6 +3,59 @@
 All notable changes to the `budi` Cursor extension are tracked here. The
 Cursor extension follows the main `siropkin/budi` release rhythm.
 
+## 1.2.0 — 8.1 onboarding entry point
+
+_Tracked in `siropkin/budi#314`, governed by ADR-0088 §6 (onboarding scope is strictly local)._
+
+### Added
+
+- **Welcome view for first-run users.** When the daemon is unreachable
+  AND this extension install has never seen the daemon healthy, the
+  status bar shows `⚪ budi · setup` (not `offline`) and clicking it
+  opens an in-editor welcome view. The view explains budi in one
+  sentence, shows the canonical install command for the user's
+  platform, and offers two actions:
+  - _Open Terminal With This Command_ — opens Cursor's integrated
+    terminal with the install command pre-filled (not executed).
+  - _I already installed it_ — force-rechecks `/health` and, on
+    success, swaps to a single `budi init && budi doctor` hand-off
+    action.
+  The view retires itself automatically on the first successful
+  Cursor-provider reading.
+- **New `firstRun` health state** distinct from `red`. Persisted via
+  `context.globalState`; once the daemon has been seen healthy on
+  this machine, the extension never returns to `firstRun` even if the
+  daemon later goes down.
+- **`Budi: Show Welcome / First-Run Setup` command** so users can
+  re-open the welcome view from the Command Palette at any time.
+- **Per-platform install commands** in `src/installCommands.ts`
+  mirror the main-repo README one-to-one — macOS/Linux uses
+  `curl -fsSL …/install-standalone.sh | bash`, Windows uses
+  `irm …/install-standalone.ps1 | iex`.
+- **Local-only onboarding counters** at
+  `~/.local/share/budi/cursor-onboarding.json` (v1 contract):
+  `welcome_view_impressions`, `open_terminal_clicks`,
+  `handoffs_completed`, plus coarse first/last ISO timestamps.
+  `budi doctor` reads this file so we can see how many
+  extension-first users reach a running daemon without any remote
+  telemetry.
+- **Marketplace description** now states explicitly that the
+  extension can guide users through the budi install if they don't
+  have it yet (acquisition-funnel polish).
+
+### Changed
+
+- **Status bar command** is now `budi.statusBarClick` (dispatches to
+  the welcome view in `firstRun` mode, to the cloud click-through
+  otherwise). `budi.openDashboard` is still registered for users who
+  bind the command manually.
+
+### Notes
+
+- Privacy: the counters file is local-only and contains integer counts plus coarse first/last ISO timestamps — no prompts, no code, no outside-of-repo data. ADR-0083 limits are preserved.
+- The cursor-sessions.json v1 contract (ADR-0086 §3.4) is untouched.
+- Public-site sync for the new extension-first acquisition tile is threaded into `siropkin/budi#296`.
+
 ## 1.1.0 — 8.1 statusline-only surface
 
 _Tracked in `siropkin/budi#232`, governed by ADR-0088 §7._

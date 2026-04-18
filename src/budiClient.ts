@@ -103,21 +103,31 @@ export function formatCostLine(costs: ResolvedCosts): string {
   return parts.join(" · ");
 }
 
-export type HealthState = "green" | "yellow" | "red" | "gray";
+export type HealthState = "green" | "yellow" | "red" | "gray" | "firstRun";
 
 /**
- * Decide which indicator to show, per siropkin/budi#232:
+ * Decide which indicator to show, per siropkin/budi#232 and #314.
  *
- * - `gray`  — extension is still starting up (no reading yet).
- * - `red`   — daemon is unreachable or reports an incompatible `api_version`.
- * - `yellow` — daemon is healthy but this machine has no Cursor usage in the window.
- * - `green` — daemon is healthy and Cursor traffic is being recorded.
+ * - `gray`     — extension is still starting up (no reading yet).
+ * - `firstRun` — the daemon is unreachable **and** this extension install has
+ *                never seen a healthy daemon. The user discovered budi via the
+ *                marketplace and has not installed the engine yet — we route
+ *                them to the welcome view instead of a "daemon offline" error
+ *                (#314).
+ * - `red`      — the daemon is unreachable or reports an incompatible
+ *                `api_version`, **and** this extension install has seen a
+ *                healthy daemon at some point (so "offline" is the accurate
+ *                story, not "not installed").
+ * - `yellow`   — daemon is healthy but this machine has no Cursor usage in the
+ *                rolling window.
+ * - `green`    — daemon is healthy and Cursor traffic is being recorded.
  */
 export function deriveHealthState(
   health: DaemonHealth | null,
   statusline: StatuslineData | null,
+  everSawDaemon = true,
 ): HealthState {
-  if (!health) return "red";
+  if (!health) return everSawDaemon ? "red" : "firstRun";
   if (health.api_version < MIN_API_VERSION) return "red";
   if (!statusline) return "yellow";
   const costs = resolveCosts(statusline);
@@ -140,6 +150,7 @@ export function healthIndicator(state: HealthState): string {
       return "\u{1F7E1}";
     case "red":
       return "\u{1F534}";
+    case "firstRun":
     case "gray":
     default:
       return "\u26AA";
@@ -157,6 +168,10 @@ export interface ClickUrlOptions {
  * when there is an active session (here: active Cursor traffic in the
  * rolling 1d window), open the cloud session list; otherwise open the
  * dashboard root. The cloud endpoint defaults to `https://app.getbudi.dev`.
+ *
+ * First-run (`firstRun` health state, #314) is handled upstream — the
+ * status bar command switches to the in-editor welcome view instead of
+ * calling this helper.
  */
 export function clickUrl({ cloudEndpoint, statusline }: ClickUrlOptions): string {
   const base = cloudEndpoint.replace(/\/+$/, "");
@@ -176,6 +191,11 @@ export function buildTooltip(
   cloudEndpoint: string,
 ): string {
   const lines: string[] = ["budi — Cursor usage", ""];
+  if (state === "firstRun") {
+    lines.push("budi is not installed on this machine yet.");
+    lines.push("Click to set it up in one step.");
+    return lines.join("\n");
+  }
   if (state === "red") {
     lines.push("Daemon not reachable.");
     lines.push("Run `budi doctor` to verify.");
@@ -200,6 +220,7 @@ export function buildTooltip(
 
 export function buildStatusText(state: HealthState, statusline: StatuslineData | null): string {
   const dot = healthIndicator(state);
+  if (state === "firstRun") return `${dot} budi · setup`;
   if (state === "red") return `${dot} budi · offline`;
   if (state === "gray") return `${dot} budi`;
   const costs = resolveCosts(statusline ?? {});

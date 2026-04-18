@@ -96,13 +96,21 @@ describe("deriveHealthState", () => {
     api_version: MIN_API_VERSION,
   };
 
-  it("returns red when the daemon is unreachable", () => {
+  it("returns red when the daemon is unreachable and we've seen it healthy before", () => {
+    expect(deriveHealthState(null, null, true)).toBe("red");
+  });
+
+  it("returns firstRun when the daemon is unreachable and we've never seen it before (#314)", () => {
+    expect(deriveHealthState(null, null, false)).toBe("firstRun");
+  });
+
+  it("defaults everSawDaemon to true (preserves pre-#314 behavior for existing callers)", () => {
     expect(deriveHealthState(null, null)).toBe("red");
   });
 
   it("returns red when the daemon api_version is too old", () => {
     const old: DaemonHealth = { ok: true, version: "8.0.0", api_version: MIN_API_VERSION - 1 };
-    expect(deriveHealthState(old, { cost_1d: 5 })).toBe("red");
+    expect(deriveHealthState(old, { cost_1d: 5 }, true)).toBe("red");
   });
 
   it("returns yellow when the daemon is healthy but no Cursor traffic is recorded", () => {
@@ -123,6 +131,12 @@ describe("deriveHealthState", () => {
   it("falls back to legacy aliases for health detection against a pre-#224 daemon", () => {
     expect(deriveHealthState(healthyDaemon, { today_cost: 2 })).toBe("green");
   });
+
+  it("drops firstRun the moment the daemon answers — regardless of everSawDaemon history", () => {
+    // A healthy /health promotes us to the normal states; we never
+    // linger in firstRun just because globalState is empty.
+    expect(deriveHealthState(healthyDaemon, null, false)).toBe("yellow");
+  });
 });
 
 describe("buildStatusText", () => {
@@ -141,6 +155,10 @@ describe("buildStatusText", () => {
 
   it("shows a hollow dot during startup", () => {
     expect(buildStatusText("gray", null)).toBe("\u26AA budi");
+  });
+
+  it("shows a distinctive 'setup' statusline in firstRun mode (#314)", () => {
+    expect(buildStatusText("firstRun", null)).toBe("\u26AA budi · setup");
   });
 
   it("uses yellow when the daemon is reachable but no Cursor traffic yet", () => {
@@ -190,6 +208,7 @@ describe("healthIndicator", () => {
     expect(healthIndicator("yellow")).toBe("\u{1F7E1}");
     expect(healthIndicator("red")).toBe("\u{1F534}");
     expect(healthIndicator("gray")).toBe("\u26AA");
+    expect(healthIndicator("firstRun")).toBe("\u26AA");
   });
 });
 
@@ -219,6 +238,15 @@ describe("buildTooltip", () => {
       "https://app.getbudi.dev",
     );
     expect(tip).toContain("No recent Cursor traffic");
+  });
+
+  it("invites the user to finish setup in firstRun mode (#314)", () => {
+    const tip = buildTooltip("firstRun", null, "https://app.getbudi.dev");
+    expect(tip).toContain("budi is not installed on this machine yet");
+    expect(tip).toContain("Click to set it up in one step");
+    // Must not look like an error — first-run is not a failure state.
+    expect(tip).not.toContain("Daemon not reachable");
+    expect(tip).not.toContain("budi doctor");
   });
 });
 
