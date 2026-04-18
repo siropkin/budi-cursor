@@ -40,6 +40,7 @@ Per ADR-0088 §7 and `siropkin/budi#232`, the extension is intentionally **statu
 1. **One status bar item** — renders the shared provider-scoped status contract from the daemon, filtered to `provider=cursor`, in the same byte-for-byte shape the Claude Code statusline uses: `budi · $X 1d · $Y 7d · $Z 30d`. A leading dot glyph (🟢 / 🟡 / 🔴 / ⚪) reports extension health.
 2. **Workspace signal** — writes the active workspace folder to `~/.local/share/budi/cursor-sessions.json` (v1 contract, ADR-0086 §3.4) so the daemon can resolve which workspace a Cursor session belongs to.
 3. **Click-through** — opens the cloud dashboard, mirroring the Claude Code statusline URL composition (`/dashboard/sessions` when a Cursor session is active, `/dashboard` otherwise).
+4. **Onboarding entry point (v1.2.x, ADR-0088 §6, `siropkin/budi#314`)** — when the daemon has never been seen healthy on this install, the extension enters `firstRun` mode: the status bar shows `⚪ budi · setup` and clicking it opens a WebView welcome view with the canonical platform-specific install command and a `budi init && budi doctor` hand-off. The welcome view retires automatically on the first Cursor reading. Local-only counters (`~/.local/share/budi/cursor-onboarding.json`) are readable by `budi doctor`. Cross-surface local→cloud linking UX stays owned by `siropkin/budi#235` (R3) — the extension's onboarding scope is strictly local.
 
 No sidebar, no session list, no vitals grid, no tips feed. Those were retired in v1.1.0. If real usage in 9.x demands a richer surface it must come back behind a flag; it must never become the default.
 
@@ -52,10 +53,13 @@ No sidebar, no session list, no vitals grid, no tips feed. Those were retired in
 
 ## Key files
 
-- `src/extension.ts` — activation, status bar item, configuration plumbing, refresh loop.
-- `src/budiClient.ts` — fetch helpers, health-state derivation, status-text + tooltip builders, click-URL composer. All rendering logic lives here so it is easy to unit-test.
+- `src/extension.ts` — activation, status bar item, configuration plumbing, refresh loop, welcome-view lifecycle (hooks into `firstRun` → `green/yellow` transition, #314).
+- `src/budiClient.ts` — fetch helpers, health-state derivation (including `firstRun`), status-text + tooltip builders, click-URL composer. All rendering logic lives here so it is easy to unit-test.
+- `src/welcomeView.ts` — WebView panel used during `firstRun` onboarding (#314). Pure `renderHtml(stage, platform)` function; side-effectful terminal/panel plumbing is injectable.
+- `src/installCommands.ts` — canonical platform-specific install commands (mirrors `siropkin/budi/README.md`).
+- `src/onboardingCounters.ts` — writer for the local-only `~/.local/share/budi/cursor-onboarding.json` v1 counters file read by `budi doctor`.
 - `src/sessionStore.ts` — cursor-sessions.json v1 writer (workspace signal).
-- `src/*.test.ts` — Vitest unit tests for the client helpers and the workspace-signal contract.
+- `src/*.test.ts` — Vitest unit tests.
 - `assets/icon.png` — marketplace tile, green-dot brand mark sourced from getbudi.dev (`#22c55e`).
 
 ## Dev notes

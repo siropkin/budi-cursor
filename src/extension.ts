@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import {
+  HealthState,
   StatuslineData,
   buildStatusText,
   buildTooltip,
@@ -8,8 +9,18 @@ import {
   fetchDaemonHealth,
   fetchStatusline,
   MIN_API_VERSION,
+  resolveCosts,
 } from "./budiClient";
 import { clearActiveWorkspace, writeActiveWorkspace } from "./sessionStore";
+import {
+  hideWelcome,
+  isWelcomeVisible,
+  showWelcome,
+  transitionTo,
+  type WelcomeStage,
+} from "./welcomeView";
+
+const EVER_SAW_DAEMON_KEY = "budi.everSawDaemon";
 
 let statusBarItem: vscode.StatusBarItem;
 let dataPollTimer: ReturnType<typeof setInterval> | undefined;
@@ -19,11 +30,16 @@ let pendingRefreshDaemonUrl: string | undefined;
 let cachedStatusline: StatuslineData | null = null;
 let apiVersionWarningShown = false;
 let daemonOfflineWarningLogged = false;
+let lastState: HealthState = "gray";
+let everSawDaemon = false;
+let everSawCursorTraffic = false;
 
 export function activate(context: vscode.ExtensionContext): void {
   log = vscode.window.createOutputChannel("budi");
   context.subscriptions.push(log);
   log.appendLine(`[budi] activated at ${new Date().toISOString()}`);
+
+  everSawDaemon = context.globalState.get<boolean>(EVER_SAW_DAEMON_KEY, false);
 
   const settings = vscode.workspace.getConfiguration("budi");
   let daemonUrl: string = settings.get("daemonUrl", "http://127.0.0.1:7878");
@@ -40,11 +56,26 @@ export function activate(context: vscode.ExtensionContext): void {
 
   statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, -100);
   statusBarItem.name = "budi";
-  statusBarItem.command = "budi.openDashboard";
+  statusBarItem.command = "budi.statusBarClick";
   statusBarItem.text = "\u26AA budi";
   statusBarItem.tooltip = "budi — Cursor usage\n\nLoading...";
   statusBarItem.show();
   context.subscriptions.push(statusBarItem);
+
+  // Single command the status bar always routes through. It branches
+  // on the current state instead of hard-coding the dashboard URL so
+  // first-run users land in the welcome view (siropkin/budi#314) and
+  // everyone else keeps the Claude Code click-through shape.
+  context.subscriptions.push(
+    vscode.commands.registerCommand("budi.statusBarClick", () => {
+      if (lastState === "firstRun") {
+        openWelcome(context, "needs-install", daemonUrl, cloudEndpoint);
+        return;
+      }
+      const url = clickUrl({ cloudEndpoint, statusline: cachedStatusline });
+      void vscode.env.openExternal(vscode.Uri.parse(url));
+    }),
+  );
 
   context.subscriptions.push(
     vscode.commands.registerCommand("budi.openDashboard", () => {
@@ -56,7 +87,14 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(
     vscode.commands.registerCommand("budi.refreshStatus", () => {
       log.appendLine("[budi] manual refresh triggered");
-      requestRefresh(daemonUrl, cloudEndpoint);
+      requestRefresh(daemonUrl, cloudEndpoint, context);
+    }),
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("budi.showWelcome", () => {
+      const stage: WelcomeStage = everSawDaemon ? "needs-init" : "needs-install";
+      openWelcome(context, stage, daemonUrl, cloudEndpoint);
     }),
   );
 
@@ -67,14 +105,14 @@ export function activate(context: vscode.ExtensionContext): void {
       daemonUrl = updated.get("daemonUrl", "http://127.0.0.1:7878");
       cloudEndpoint = updated.get("cloudEndpoint", "https://app.getbudi.dev");
       dataPollInterval = updated.get("pollingIntervalMs", 15000);
-      restartDataPoll(daemonUrl, cloudEndpoint, dataPollInterval);
-      requestRefresh(daemonUrl, cloudEndpoint);
+      restartDataPoll(daemonUrl, cloudEndpoint, dataPollInterval, context);
+      requestRefresh(daemonUrl, cloudEndpoint, context);
     }),
   );
 
   void checkApiVersionOnce(daemonUrl);
-  requestRefresh(daemonUrl, cloudEndpoint);
-  startDataPoll(daemonUrl, cloudEndpoint, dataPollInterval);
+  requestRefresh(daemonUrl, cloudEndpoint, context);
+  startDataPoll(daemonUrl, cloudEndpoint, dataPollInterval, context);
 }
 
 export function deactivate(): void {
@@ -85,15 +123,25 @@ export function deactivate(): void {
   clearActiveWorkspace();
 }
 
-function startDataPoll(daemonUrl: string, cloudEndpoint: string, intervalMs: number): void {
+function startDataPoll(
+  daemonUrl: string,
+  cloudEndpoint: string,
+  intervalMs: number,
+  context: vscode.ExtensionContext,
+): void {
   dataPollTimer = setInterval(() => {
-    requestRefresh(daemonUrl, cloudEndpoint);
+    requestRefresh(daemonUrl, cloudEndpoint, context);
   }, intervalMs);
 }
 
-function restartDataPoll(daemonUrl: string, cloudEndpoint: string, intervalMs: number): void {
+function restartDataPoll(
+  daemonUrl: string,
+  cloudEndpoint: string,
+  intervalMs: number,
+  context: vscode.ExtensionContext,
+): void {
   if (dataPollTimer) clearInterval(dataPollTimer);
-  startDataPoll(daemonUrl, cloudEndpoint, intervalMs);
+  startDataPoll(daemonUrl, cloudEndpoint, intervalMs, context);
 }
 
 async function checkApiVersionOnce(daemonUrl: string): Promise<void> {
@@ -112,7 +160,11 @@ async function checkApiVersionOnce(daemonUrl: string): Promise<void> {
   }
 }
 
-function requestRefresh(daemonUrl: string, cloudEndpoint: string): void {
+function requestRefresh(
+  daemonUrl: string,
+  cloudEndpoint: string,
+  context: vscode.ExtensionContext,
+): void {
   pendingRefreshDaemonUrl = daemonUrl;
   if (refreshInFlight) return;
   refreshInFlight = true;
@@ -121,20 +173,24 @@ function requestRefresh(daemonUrl: string, cloudEndpoint: string): void {
       while (pendingRefreshDaemonUrl) {
         const nextDaemonUrl = pendingRefreshDaemonUrl;
         pendingRefreshDaemonUrl = undefined;
-        await refreshData(nextDaemonUrl, cloudEndpoint);
+        await refreshData(nextDaemonUrl, cloudEndpoint, context);
       }
     } catch (err) {
       log.appendLine(`[budi] refresh error: ${err}`);
     } finally {
       refreshInFlight = false;
       if (pendingRefreshDaemonUrl) {
-        requestRefresh(pendingRefreshDaemonUrl, cloudEndpoint);
+        requestRefresh(pendingRefreshDaemonUrl, cloudEndpoint, context);
       }
     }
   })();
 }
 
-async function refreshData(daemonUrl: string, cloudEndpoint: string): Promise<void> {
+async function refreshData(
+  daemonUrl: string,
+  cloudEndpoint: string,
+  context: vscode.ExtensionContext,
+): Promise<void> {
   const folders = vscode.workspace.workspaceFolders;
   const cwd = folders?.[0]?.uri.fsPath;
   if (cwd) writeActiveWorkspace(cwd);
@@ -145,7 +201,14 @@ async function refreshData(daemonUrl: string, cloudEndpoint: string): Promise<vo
   ]);
   cachedStatusline = statusline;
 
-  const state = deriveHealthState(health, statusline);
+  if (health && !everSawDaemon) {
+    everSawDaemon = true;
+    await context.globalState.update(EVER_SAW_DAEMON_KEY, true);
+    log.appendLine("[budi] first daemon detection — extension leaves firstRun mode.");
+  }
+
+  const state = deriveHealthState(health, statusline, everSawDaemon);
+  lastState = state;
   statusBarItem.text = buildStatusText(state, statusline);
   statusBarItem.tooltip = buildTooltip(state, statusline, cloudEndpoint);
 
@@ -159,4 +222,71 @@ async function refreshData(daemonUrl: string, cloudEndpoint: string): Promise<vo
   } else {
     daemonOfflineWarningLogged = false;
   }
+
+  // Drive the welcome view off the polled state so it stays in sync
+  // without blocking the refresh loop on UI work.
+  syncWelcomeView(context, state, statusline, daemonUrl, cloudEndpoint);
+}
+
+function syncWelcomeView(
+  context: vscode.ExtensionContext,
+  state: HealthState,
+  statusline: StatuslineData | null,
+  daemonUrl: string,
+  cloudEndpoint: string,
+): void {
+  if (!isWelcomeVisible()) return;
+
+  // First successful Cursor-provider reading retires the welcome view.
+  if (state === "green" || state === "yellow") {
+    const costs = resolveCosts(statusline ?? {});
+    const hasCursorTraffic = costs.cost1d > 0 || costs.cost7d > 0 || costs.cost30d > 0;
+    if (hasCursorTraffic) {
+      everSawCursorTraffic = true;
+      hideWelcome();
+      log.appendLine("[budi] first Cursor reading recorded — welcome view retired.");
+      return;
+    }
+    // Daemon is up but no Cursor traffic yet — keep the user on the
+    // init hand-off stage so they know how to verify.
+    transitionTo("needs-init");
+    return;
+  }
+
+  if (state === "firstRun") {
+    transitionTo("needs-install");
+    return;
+  }
+
+  // state === "red" while the welcome view is open means the user
+  // installed the daemon but it is still not reachable. Keep the
+  // install stage open with a hint in the output channel rather
+  // than an in-face modal.
+  if (state === "red") {
+    transitionTo("needs-install");
+    log.appendLine(
+      "[budi] daemon still unreachable after install flow — run `budi doctor` once the install finishes.",
+    );
+  }
+
+  // Touch unused params to keep the lint honest even when the
+  // compiler does not flag them.
+  void daemonUrl;
+  void cloudEndpoint;
+  void everSawCursorTraffic;
+}
+
+function openWelcome(
+  context: vscode.ExtensionContext,
+  stage: WelcomeStage,
+  daemonUrl: string,
+  cloudEndpoint: string,
+): void {
+  showWelcome(context, stage, {
+    onRecheck: async () => {
+      log.appendLine("[budi] welcome-view recheck triggered");
+      // A single eager poll; the normal loop keeps going underneath.
+      await refreshData(daemonUrl, cloudEndpoint, context);
+    },
+  });
 }

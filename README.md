@@ -15,12 +15,13 @@ Starting with `v1.1.0` the extension is intentionally statusline-only:
 🟢 budi · $2.34 1d · $12.50 7d · $48.10 30d
 ```
 
-| Indicator | Meaning                                                                       |
-| --------- | ----------------------------------------------------------------------------- |
-| 🟢 green  | Daemon reachable, Cursor traffic recorded in the rolling window.              |
-| 🟡 yellow | Daemon reachable, no Cursor traffic in the rolling window (not an error).     |
-| 🔴 red    | Daemon unreachable or `api_version` too old. Tooltip points to `budi doctor`. |
-| ⚪ gray   | Extension starting up, first reading not yet fetched.                         |
+| Indicator | Meaning                                                                                    |
+| --------- | ------------------------------------------------------------------------------------------ |
+| 🟢 green  | Daemon reachable, Cursor traffic recorded in the rolling window.                           |
+| 🟡 yellow | Daemon reachable, no Cursor traffic in the rolling window (not an error).                  |
+| 🔴 red    | Daemon unreachable or `api_version` too old. Tooltip points to `budi doctor`.              |
+| ⚪ gray   | Extension starting up, first reading not yet fetched.                                      |
+| ⚪ setup  | First run — daemon hasn't been installed yet. Click for the install flow (`budi · setup`). |
 
 Click the item to open the cloud dashboard. When there is an active Cursor session it opens `<cloud>/dashboard/sessions`; otherwise it opens `<cloud>/dashboard` — the same click-through behaviour as the Claude Code statusline.
 
@@ -29,6 +30,18 @@ Click the item to open the cloud dashboard. When there is an active Cursor sessi
 - **budi** installed and initialised (`budi init`).
 - **budi-daemon** running (starts automatically after `budi init`).
 - Cursor's `Override OpenAI Base URL` set to `http://localhost:9878` (Cursor Settings → Models) so LLM traffic routes through the budi proxy.
+
+## First-run (no daemon installed yet)
+
+Starting with `v1.2.0` the extension is a first-class **onboarding entry point**. If you discovered budi via the marketplace and haven't installed the daemon yet:
+
+1. The status bar shows a gray ⚪ `budi · setup` — this is not an error, just "not installed yet".
+2. Click the status bar item. The extension opens a welcome view inside Cursor with the one-line install command for your platform.
+3. Click **Open Terminal With This Command**. The command is pre-filled in Cursor's integrated terminal — you press enter yourself after reading it.
+4. After install finishes, click **I already installed it** (or the status bar refreshes on its own within one poll cycle).
+5. Click **Finish setup in terminal** to run `budi init && budi doctor`. Once Cursor traffic is recorded, the welcome view closes and the status bar turns 🟢 green.
+
+You can re-open the welcome view at any time with **Cmd+Shift+P → Budi: Show Welcome / First-Run Setup**.
 
 ## Install
 
@@ -67,10 +80,11 @@ Then reload Cursor: **Cmd+Shift+P** → **Developer: Reload Window**.
 
 ## Commands
 
-| Command                  | Description                                                          |
-| ------------------------ | -------------------------------------------------------------------- |
-| **Budi: Open Dashboard** | Open the budi cloud dashboard (session list when a session is live). |
-| **Budi: Refresh Status** | Force-refresh the status bar immediately.                            |
+| Command                                  | Description                                                           |
+| ---------------------------------------- | --------------------------------------------------------------------- |
+| **Budi: Open Dashboard**                 | Open the budi cloud dashboard (session list when a session is live).  |
+| **Budi: Refresh Status**                 | Force-refresh the status bar immediately.                             |
+| **Budi: Show Welcome / First-Run Setup** | Re-open the onboarding welcome view (install + `budi init` hand-off). |
 
 ## Configuration
 
@@ -104,6 +118,14 @@ Then reload Cursor: **Cmd+Shift+P** → **Developer: Reload Window**.
 **API-version warning on startup**
 
 You are running an older `budi` daemon than this extension requires. Run `budi update` or reinstall via the instructions at [getbudi.dev](https://getbudi.dev).
+
+## What changed in 1.2.0
+
+- **Added** first-class onboarding entry point (siropkin/budi#314). Users who discover the extension first (no daemon on disk) now see a gray ⚪ `budi · setup` status bar and a welcome view with a pre-filled install command and a `budi init && budi doctor` hand-off. The welcome view closes automatically after the first Cursor reading.
+- **Added** a new `firstRun` health state distinct from `offline`. "Never installed" is not rendered as an error.
+- **Added** `Budi: Show Welcome / First-Run Setup` command.
+- **Added** local-only onboarding counters at `~/.local/share/budi/cursor-onboarding.json` so `budi doctor` can show install-funnel health without any remote telemetry.
+- **Updated** marketplace description to explain that the extension can install budi for users who don't have it yet.
 
 ## What changed in 1.1.0
 
