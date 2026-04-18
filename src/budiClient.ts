@@ -1,57 +1,32 @@
-import { spawn } from "child_process";
 import * as http from "http";
 
+/**
+ * Provider-scoped status contract consumed by this extension.
+ *
+ * Authoritative spec: `docs/statusline-contract.md` in `siropkin/budi`
+ * (shipped in 8.1 under siropkin/budi#224, governed by ADR-0088 §4).
+ *
+ * The extension always queries with `provider=cursor` so every numeric
+ * field reflects Cursor usage only — never blended multi-provider totals
+ * (ADR-0088 §7, siropkin/budi#232).
+ */
 export interface StatuslineData {
-  today_cost: number;
-  week_cost: number;
-  month_cost: number;
-  session_cost?: number;
-  branch_cost?: number;
-  project_cost?: number;
+  /** Rolling last 24h, dollars. */
+  cost_1d?: number;
+  /** Rolling last 7 days, dollars. */
+  cost_7d?: number;
+  /** Rolling last 30 days, dollars. */
+  cost_30d?: number;
+  /** Echoes the `provider` filter applied by the daemon. */
+  provider_scope?: string;
+  /** Most recent provider seen inside the 1d window, after the provider filter. */
   active_provider?: string;
-  health_state?: string;
-  health_tip?: string;
-  session_msg_cost?: number;
-}
-
-export interface VitalScore {
-  state: string;
-  label: string;
-}
-
-export interface SessionVitals {
-  context_drag?: VitalScore;
-  cache_efficiency?: VitalScore;
-  thrashing?: VitalScore;
-  cost_acceleration?: VitalScore;
-}
-
-export interface SessionHealthData {
-  session_id: string;
-  state: string;
-  tip: string;
-  message_count: number;
-  total_cost_cents: number;
-  vitals: SessionVitals;
-}
-
-export interface SessionListEntry {
-  session_id: string;
-  started_at?: string;
-  ended_at?: string;
-  message_count: number;
-  cost_cents: number;
-  model?: string;
-  provider: string;
-  health_state?: string;
-  title?: string;
-}
-
-export interface HealthAggregation {
-  green: number;
-  yellow: number;
-  red: number;
-  total: number;
+  // Deprecated 8.0 aliases. The daemon still populates these with the same
+  // rolling values for one release; removed in 9.0. Kept here so this
+  // extension still renders something useful against a pre-#224 daemon.
+  today_cost?: number;
+  week_cost?: number;
+  month_cost?: number;
 }
 
 export interface DaemonHealth {
@@ -60,56 +35,175 @@ export interface DaemonHealth {
   api_version: number;
 }
 
+export interface ResolvedCosts {
+  cost1d: number;
+  cost7d: number;
+  cost30d: number;
+  /**
+   * True when the daemon only returned the deprecated 8.0 aliases
+   * (`today_cost` / `week_cost` / `month_cost`) and not the canonical
+   * rolling fields. Lets the extension log a one-time warning about
+   * talking to a pre-#224 daemon.
+   */
+  usedLegacyAliases: boolean;
+}
+
 /** The minimum daemon api_version this extension requires. */
 export const MIN_API_VERSION = 1;
 
+/** The provider filter this extension always sends — ADR-0088 §7. */
+export const CURSOR_PROVIDER = "cursor";
+
 function formatCost(dollars: number): string {
-  if (dollars >= 1000) {
-    return `$${(dollars / 1000).toFixed(1)}K`;
-  }
-  if (dollars >= 100) {
-    return `$${Math.round(dollars)}`;
-  }
-  if (dollars > 0) {
-    return `$${dollars.toFixed(2)}`;
-  }
+  if (!Number.isFinite(dollars) || dollars < 0) return "$0.00";
+  if (dollars >= 1000) return `$${(dollars / 1000).toFixed(1)}K`;
+  if (dollars >= 100) return `$${Math.round(dollars)}`;
+  if (dollars > 0) return `$${dollars.toFixed(2)}`;
   return "$0.00";
 }
 
-export function formatAggregationStatusText(agg: HealthAggregation): string {
-  if (agg.total === 0) return "budi";
-  return `budi · \u{1F7E2} ${agg.green} \u{1F7E1} ${agg.yellow} \u{1F534} ${agg.red}`;
+/**
+ * Resolve the rolling cost fields, preferring the canonical
+ * `cost_1d` / `cost_7d` / `cost_30d` shape and falling back to the
+ * deprecated 8.0 aliases when talking to an older daemon.
+ *
+ * This mirrors `build_slot_values` in `budi-cli` so the two surfaces
+ * stay byte-for-byte aligned during the 8.0 → 8.1 cutover.
+ */
+export function resolveCosts(data: StatuslineData): ResolvedCosts {
+  const hasNew =
+    typeof data.cost_1d === "number" ||
+    typeof data.cost_7d === "number" ||
+    typeof data.cost_30d === "number";
+  const pick = (primary: number | undefined, legacy: number | undefined): number => {
+    if (typeof primary === "number" && Number.isFinite(primary)) return primary;
+    if (typeof legacy === "number" && Number.isFinite(legacy)) return legacy;
+    return 0;
+  };
+  return {
+    cost1d: pick(data.cost_1d, data.today_cost),
+    cost7d: pick(data.cost_7d, data.week_cost),
+    cost30d: pick(data.cost_30d, data.month_cost),
+    usedLegacyAliases: !hasNew,
+  };
 }
 
-export function formatAggregationTooltip(agg: HealthAggregation, todayCost: number): string {
-  const lines: string[] = ["budi — AI cost tracker", ""];
-  lines.push(`Today's sessions: ${agg.total}`);
-  if (agg.green > 0) lines.push(`  \u{1F7E2} ${agg.green} healthy`);
-  if (agg.yellow > 0) lines.push(`  \u{1F7E1} ${agg.yellow} warning`);
-  if (agg.red > 0) lines.push(`  \u{1F534} ${agg.red} needs attention`);
+/**
+ * Render the numeric portion of the statusline, byte-for-byte matching
+ * the default Claude Code cost line (`$X 1d · $Y 7d · $Z 30d`) from
+ * `crates/budi-cli/src/commands/statusline.rs`. The extension adds its
+ * own leading health indicator on top of this string.
+ */
+export function formatCostLine(costs: ResolvedCosts): string {
+  const parts = [
+    `${formatCost(costs.cost1d)} 1d`,
+    `${formatCost(costs.cost7d)} 7d`,
+    `${formatCost(costs.cost30d)} 30d`,
+  ];
+  return parts.join(" · ");
+}
+
+export type HealthState = "green" | "yellow" | "red" | "gray";
+
+/**
+ * Decide which indicator to show, per siropkin/budi#232:
+ *
+ * - `gray`  — extension is still starting up (no reading yet).
+ * - `red`   — daemon is unreachable or reports an incompatible `api_version`.
+ * - `yellow` — daemon is healthy but this machine has no Cursor usage in the window.
+ * - `green` — daemon is healthy and Cursor traffic is being recorded.
+ */
+export function deriveHealthState(
+  health: DaemonHealth | null,
+  statusline: StatuslineData | null,
+): HealthState {
+  if (!health) return "red";
+  if (health.api_version < MIN_API_VERSION) return "red";
+  if (!statusline) return "yellow";
+  const costs = resolveCosts(statusline);
+  const hasTraffic = costs.cost1d > 0 || costs.cost7d > 0 || costs.cost30d > 0;
+  if (hasTraffic) return "green";
+  return "yellow";
+}
+
+/**
+ * Render the health indicator as a unicode dot. These glyphs are
+ * pixel-consistent across VS Code status bar themes and do not require
+ * `ThemeColor` plumbing. The green dot matches the getbudi.dev brand
+ * mark (`#22c55e`).
+ */
+export function healthIndicator(state: HealthState): string {
+  switch (state) {
+    case "green":
+      return "\u{1F7E2}";
+    case "yellow":
+      return "\u{1F7E1}";
+    case "red":
+      return "\u{1F534}";
+    case "gray":
+    default:
+      return "\u26AA";
+  }
+}
+
+export interface ClickUrlOptions {
+  cloudEndpoint: string;
+  statusline: StatuslineData | null;
+}
+
+/**
+ * Click-through URL for the statusline item. Mirrors
+ * `crates/budi-cli/src/commands/statusline.rs::cmd_statusline`:
+ * when there is an active session (here: active Cursor traffic in the
+ * rolling 1d window), open the cloud session list; otherwise open the
+ * dashboard root. The cloud endpoint defaults to `https://app.getbudi.dev`.
+ */
+export function clickUrl({ cloudEndpoint, statusline }: ClickUrlOptions): string {
+  const base = cloudEndpoint.replace(/\/+$/, "");
+  if (statusline && statusline.active_provider === CURSOR_PROVIDER) {
+    return `${base}/dashboard/sessions`;
+  }
+  return `${base}/dashboard`;
+}
+
+/**
+ * Build a status bar tooltip that names the provider scope, names the
+ * rolling windows, and points the user at `budi doctor` on trouble.
+ */
+export function buildTooltip(
+  state: HealthState,
+  statusline: StatuslineData | null,
+  cloudEndpoint: string,
+): string {
+  const lines: string[] = ["budi — Cursor usage", ""];
+  if (state === "red") {
+    lines.push("Daemon not reachable.");
+    lines.push("Run `budi doctor` to verify.");
+    lines.push("");
+    lines.push("Click to open the dashboard.");
+    return lines.join("\n");
+  }
+  const costs = resolveCosts(statusline ?? {});
+  lines.push(`1d  ${formatCost(costs.cost1d)}`);
+  lines.push(`7d  ${formatCost(costs.cost7d)}`);
+  lines.push(`30d ${formatCost(costs.cost30d)}`);
   lines.push("");
-  lines.push(`Today: ${formatCost(todayCost)}`);
-  lines.push("", "Click to open session health");
+  lines.push("Provider: cursor");
+  if (state === "yellow") {
+    lines.push("No recent Cursor traffic in the last 24h.");
+  }
+  lines.push("");
+  const base = cloudEndpoint.replace(/\/+$/, "");
+  lines.push(`Click to open ${base}`);
   return lines.join("\n");
 }
 
-export function aggregateHealth(sessions: SessionListEntry[]): HealthAggregation {
-  const agg: HealthAggregation = { green: 0, yellow: 0, red: 0, total: 0 };
-  for (const s of sessions) {
-    agg.total++;
-    switch (s.health_state) {
-      case "yellow":
-        agg.yellow++;
-        break;
-      case "red":
-        agg.red++;
-        break;
-      default:
-        agg.green++;
-        break;
-    }
-  }
-  return agg;
+export function buildStatusText(state: HealthState, statusline: StatuslineData | null): string {
+  const dot = healthIndicator(state);
+  if (state === "red") return `${dot} budi · offline`;
+  if (state === "gray") return `${dot} budi`;
+  const costs = resolveCosts(statusline ?? {});
+  return `${dot} budi · ${formatCostLine(costs)}`;
 }
 
 /**
@@ -131,7 +225,6 @@ export function fetchDaemonHealth(daemonUrl: string): Promise<DaemonHealth | nul
         }
       });
     });
-
     req.on("error", () => resolve(null));
     req.on("timeout", () => {
       req.destroy();
@@ -141,74 +234,23 @@ export function fetchDaemonHealth(daemonUrl: string): Promise<DaemonHealth | nul
 }
 
 /**
- * Fetch statusline data by calling `budi statusline --format json`.
- * Falls back to a direct daemon HTTP call if the CLI is not available.
+ * Fetch provider-scoped statusline data from the daemon. The extension
+ * always scopes to `provider=cursor` — see ADR-0088 §7.
+ *
+ * `project_dir` is optional. When passed it unlocks `project_cost`
+ * (unused on the statusline surface today) and gives the daemon the
+ * repo-local context it needs for accurate branch attribution.
  */
-export async function fetchStatusline(
+export function fetchStatusline(
   daemonUrl: string,
-  sessionId?: string,
-  cwd?: string,
-): Promise<StatuslineData | null> {
-  const cliResult = await fetchViaCli(sessionId, cwd);
-  if (cliResult) {
-    return cliResult;
-  }
-
-  return fetchViaDaemon(daemonUrl, sessionId, cwd);
-}
-
-function fetchViaCli(sessionId?: string, cwd?: string): Promise<StatuslineData | null> {
-  return new Promise((resolve) => {
-    const child = spawn("budi", ["statusline", "--format", "json"], {
-      stdio: ["pipe", "pipe", "ignore"],
-      timeout: 3000,
-    });
-
-    let stdout = "";
-    child.stdout.on("data", (chunk: Buffer) => {
-      stdout += chunk.toString();
-    });
-
-    child.on("error", () => resolve(null));
-    child.on("close", () => {
-      const trimmed = stdout.trim();
-      if (!trimmed) {
-        resolve(null);
-        return;
-      }
-      try {
-        resolve(JSON.parse(trimmed));
-      } catch {
-        resolve(null);
-      }
-    });
-
-    const input: Record<string, string> = {};
-    if (sessionId) {
-      input.session_id = sessionId;
-    }
-    if (cwd) {
-      input.cwd = cwd;
-    }
-    child.stdin.write(JSON.stringify(input));
-    child.stdin.end();
-  });
-}
-
-function fetchViaDaemon(
-  baseUrl: string,
-  sessionId?: string,
-  cwd?: string,
+  projectDir?: string,
 ): Promise<StatuslineData | null> {
   return new Promise((resolve) => {
-    const url = new URL("/analytics/statusline", baseUrl);
-    if (sessionId) {
-      url.searchParams.set("session_id", sessionId);
+    const url = new URL("/analytics/statusline", daemonUrl);
+    url.searchParams.set("provider", CURSOR_PROVIDER);
+    if (projectDir) {
+      url.searchParams.set("project_dir", projectDir);
     }
-    if (cwd) {
-      url.searchParams.set("project_dir", cwd);
-    }
-
     const req = http.get(url.toString(), { timeout: 3000 }, (res) => {
       let body = "";
       res.on("data", (chunk: Buffer) => {
@@ -222,107 +264,10 @@ function fetchViaDaemon(
         }
       });
     });
-
     req.on("error", () => resolve(null));
     req.on("timeout", () => {
       req.destroy();
       resolve(null);
     });
   });
-}
-
-export function fetchSessionHealth(
-  daemonUrl: string,
-  sessionId?: string,
-): Promise<SessionHealthData | null> {
-  return new Promise((resolve) => {
-    const url = new URL("/analytics/session-health", daemonUrl);
-    if (sessionId) {
-      url.searchParams.set("session_id", sessionId);
-    }
-
-    const req = http.get(url.toString(), { timeout: 3000 }, (res) => {
-      let body = "";
-      res.on("data", (chunk: Buffer) => {
-        body += chunk.toString();
-      });
-      res.on("end", () => {
-        try {
-          resolve(JSON.parse(body));
-        } catch {
-          resolve(null);
-        }
-      });
-    });
-
-    req.on("error", () => resolve(null));
-    req.on("timeout", () => {
-      req.destroy();
-      resolve(null);
-    });
-  });
-}
-
-/**
- * Fetch recent sessions (today + yesterday) with health state from the daemon.
- */
-export function fetchRecentSessions(daemonUrl: string): Promise<SessionListEntry[] | null> {
-  return new Promise((resolve) => {
-    const yesterday = new Date();
-    yesterday.setDate(yesterday.getDate() - 1);
-    yesterday.setHours(0, 0, 0, 0);
-    const since = yesterday.toISOString();
-
-    const url = new URL("/analytics/sessions", daemonUrl);
-    url.searchParams.set("since", since);
-    url.searchParams.set("limit", "100");
-    url.searchParams.set("sort_by", "started_at");
-    url.searchParams.set("sort_asc", "false");
-
-    const req = http.get(url.toString(), { timeout: 3000 }, (res) => {
-      let body = "";
-      res.on("data", (chunk: Buffer) => {
-        body += chunk.toString();
-      });
-      res.on("end", () => {
-        try {
-          const parsed = JSON.parse(body);
-          resolve(parsed.sessions ?? parsed);
-        } catch {
-          resolve(null);
-        }
-      });
-    });
-
-    req.on("error", () => resolve(null));
-    req.on("timeout", () => {
-      req.destroy();
-      resolve(null);
-    });
-  });
-}
-
-export function splitSessionsByDay(sessions: SessionListEntry[]): {
-  today: SessionListEntry[];
-  yesterday: SessionListEntry[];
-} {
-  const now = new Date();
-  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const yesterdayStart = new Date(todayStart);
-  yesterdayStart.setDate(yesterdayStart.getDate() - 1);
-
-  const today: SessionListEntry[] = [];
-  const yesterday: SessionListEntry[] = [];
-
-  for (const s of sessions) {
-    const d = s.started_at ? new Date(s.started_at) : null;
-    if (!d) continue;
-    if (d >= todayStart) {
-      today.push(s);
-    } else if (d >= yesterdayStart) {
-      yesterday.push(s);
-    }
-  }
-
-  return { today, yesterday };
 }

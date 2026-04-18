@@ -33,32 +33,39 @@ npm run publish       # publish to VS Code Marketplace (vsce publish)
 
 Extension activates on `onStartupFinished`. No configuration required; it auto-discovers the daemon on `127.0.0.1:7878`.
 
-## What the extension does
+## What the extension does (8.1 / v1.1.x and later)
 
-1. **Status bar item** — aggregated session health circles (green/yellow/red) and today's cost, refreshed on an interval
-2. **Side panel** — session list, active-session vitals (context growth, cache reuse, cost acceleration, retry loops), and tips
-3. **Workspace signal** — writes the active workspace folder to `~/.local/share/budi/cursor-sessions.json` so the daemon can resolve which workspace a Cursor session belongs to (v1 contract, ADR-0086 §3.4)
+Per ADR-0088 §7 and `siropkin/budi#232`, the extension is intentionally **statusline-only**:
+
+1. **One status bar item** — renders the shared provider-scoped status contract from the daemon, filtered to `provider=cursor`, in the same byte-for-byte shape the Claude Code statusline uses: `budi · $X 1d · $Y 7d · $Z 30d`. A leading dot glyph (🟢 / 🟡 / 🔴 / ⚪) reports extension health.
+2. **Workspace signal** — writes the active workspace folder to `~/.local/share/budi/cursor-sessions.json` (v1 contract, ADR-0086 §3.4) so the daemon can resolve which workspace a Cursor session belongs to.
+3. **Click-through** — opens the cloud dashboard, mirroring the Claude Code statusline URL composition (`/dashboard/sessions` when a Cursor session is active, `/dashboard` otherwise).
+
+No sidebar, no session list, no vitals grid, no tips feed. Those were retired in v1.1.0. If real usage in 9.x demands a richer surface it must come back behind a flag; it must never become the default.
 
 ## Data contract with the daemon
 
-- HTTP: `GET http://127.0.0.1:7878/analytics/session-health`, `GET /analytics/sessions`, `GET /health`
-- CLI: `budi statusline --format json` (spawned as a subprocess) for the statusline rendering
-- On startup, read `/health` and verify `api_version`. If the daemon is older than the extension's required `api_version`, show a warning in the panel and stop polling. Do not crash.
+- HTTP: `GET http://127.0.0.1:7878/analytics/statusline?provider=cursor` (plus `project_dir` when a workspace is open) and `GET /health`.
+- The response shape is the shared provider-scoped status contract pinned in [`docs/statusline-contract.md`](https://github.com/siropkin/budi/blob/main/docs/statusline-contract.md) in the main repo. The contract evolves in `siropkin/budi` first, then here — never the other way.
+- On startup, read `/health` and verify `api_version`. If the daemon is older than this extension's `MIN_API_VERSION`, show a one-time warning that points at `budi update` and keep polling. Do not crash.
+- Backward compat: when talking to a pre-#224 daemon, the extension falls back to the deprecated `today_cost` / `week_cost` / `month_cost` aliases for one release, then removes the fallback in lockstep with `siropkin/budi` 9.0.
 
 ## Key files
 
-- `src/extension.ts` — activation, status bar item, panel registration, daemon-availability probe
-- `src/panel.ts` — the side panel (tree view or webview) showing session detail and tips
-- `src/budiClient.ts` — thin fetch wrapper around the daemon HTTP API; handles timeouts, auth (none, loopback only), and api_version checks
-- `src/sessionStore.ts` — local state for active session tracking and the workspace-signal file write
-- `src/*.test.ts` — Vitest unit tests for the client and store
+- `src/extension.ts` — activation, status bar item, configuration plumbing, refresh loop.
+- `src/budiClient.ts` — fetch helpers, health-state derivation, status-text + tooltip builders, click-URL composer. All rendering logic lives here so it is easy to unit-test.
+- `src/sessionStore.ts` — cursor-sessions.json v1 writer (workspace signal).
+- `src/*.test.ts` — Vitest unit tests for the client helpers and the workspace-signal contract.
+- `assets/icon.png` — marketplace tile, green-dot brand mark sourced from getbudi.dev (`#22c55e`).
 
 ## Dev notes
 
-- **No business logic**: if you catch yourself computing a cost, classifying a prompt, or rolling up tokens in this repo, stop and move it into `budi-core`. The extension must only render what the daemon returns.
-- **Never read user prompts or code**: the extension reads analytics + health endpoints only. It does not need, and must not request, any endpoint that would expose prompt content.
-- **Graceful degradation**: if the daemon is not running, show a quiet "daemon unavailable" state with a link to `brew install siropkin/budi/budi && budi init`. Do not spam errors.
-- **API version skew**: the daemon's `api_version` is the contract. Bump the minimum required version in `package.json` (or a constant in `budiClient.ts`) when the extension starts depending on a new endpoint shape, and warn users clearly when they're on an older daemon.
-- **Statusline**: rendering lives in the Rust CLI (`budi statusline`). Do not re-implement it here. Shell out and show the JSON result.
-- **Lockfile**: commit `package-lock.json`. The extension must build reproducibly for Marketplace releases.
-- **VSIX**: the main repo's `budi-cli/build.rs` bundles a pre-built `.vsix` into the CLI binary for integrations installs. When cutting a release here, update the bundled vsix in the main repo accordingly.
+- **No business logic.** If you catch yourself computing a cost, classifying a prompt, or rolling up tokens in this repo, stop and move it into `budi-core`. The extension must only render what the daemon returns.
+- **No cross-provider blending.** The extension always sends `?provider=cursor`. Do not add summary surfaces that show blended multi-provider totals — ADR-0088 §7 is explicit that provider-scoped surfaces display their own provider only.
+- **Never read user prompts or code.** Only `/analytics/statusline` and `/health` are in scope. Do not call session-detail or message-content endpoints.
+- **Match the Claude Code statusline byte-for-byte where possible.** Number formatting, separator (` · `), slot labels (`1d` / `7d` / `30d`), and click-through URL shape are all mirrored from `crates/budi-cli/src/commands/statusline.rs` in the main repo. Drift is a bug.
+- **Graceful degradation.** If the daemon is not running, show a quiet red-dot "offline" state with a tooltip that points to `budi doctor`. Do not spam modal errors.
+- **API version skew.** The daemon's `api_version` is the contract. Bump `MIN_API_VERSION` in `budiClient.ts` when the extension starts depending on a new field shape, and warn users clearly when they are on an older daemon.
+- **Lockfile.** Commit `package-lock.json`. The extension must build reproducibly for Marketplace releases.
+- **VSIX.** The main repo's `budi-cli/build.rs` bundles a pre-built `.vsix` into the CLI binary for integrations installs. When cutting a release here, update the bundled vsix in the main repo accordingly.
+- **Public-site sync.** Any visible change (status text, click-through URL, icon, marketplace copy) must be threaded into `siropkin/budi#296` so getbudi.dev screenshots and copy do not drift.
