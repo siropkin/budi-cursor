@@ -1,10 +1,11 @@
 {
   "name": "budi",
   "displayName": "budi — AI Coding Cost Tracker",
-  "description": "Live cost analytics for AI coding agents. See session cost, health, and spending trends right in the status bar.",
-  "version": "1.0.1",
+  "description": "Quiet, provider-scoped Cursor status bar for budi. Mirrors the Claude Code statusline and shows your Cursor spend over the last 1d / 7d / 30d.",
+  "version": "1.1.0",
   "publisher": "siropkin",
   "license": "MIT",
+  "icon": "assets/icon.png",
   "repository": {
     "type": "git",
     "url": "https://github.com/siropkin/budi-cursor"
@@ -36,34 +37,8 @@
       {
         "command": "budi.refreshStatus",
         "title": "Budi: Refresh Status"
-      },
-      {
-        "command": "budi.selectSession",
-        "title": "Budi: Select Session"
-      },
-      {
-        "command": "budi.toggleHealthPanel",
-        "title": "Budi: Open Session Health"
       }
     ],
-    "viewsContainers": {
-      "activitybar": [
-        {
-          "id": "budi",
-          "title": "budi",
-          "icon": "$(pulse)"
-        }
-      ]
-    },
-    "views": {
-      "budi": [
-        {
-          "type": "webview",
-          "id": "budi.healthPanel",
-          "name": "budi"
-        }
-      ]
-    },
     "configuration": {
       "title": "budi",
       "properties": {
@@ -77,6 +52,11 @@
           "type": "string",
           "default": "http://127.0.0.1:7878",
           "description": "Base URL for the budi daemon."
+        },
+        "budi.cloudEndpoint": {
+          "type": "string",
+          "default": "https://app.getbudi.dev",
+          "description": "Cloud dashboard URL opened when the status bar item is clicked. Matches the Claude Code statusline click-through."
         }
       }
     }

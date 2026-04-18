@@ -1,19 +1,34 @@
 # budi — Cursor Extension
 
-Live AI coding cost analytics in your Cursor status bar and side panel.
+A quiet, provider-scoped status bar for budi. Shows **Cursor-only** spend over the last **1d / 7d / 30d** — byte-for-byte matching the Claude Code statusline, filtered to the Cursor provider.
 
-## Features
+Starting with `v1.1.0` the extension is intentionally statusline-only:
 
-- **Status bar** — session cost + health indicator, updates automatically
-- **Health panel** — click the status bar to open; shows active session vitals (context growth, cache reuse, cost acceleration, retry loops), other recent sessions with health at a glance, and cost overview
-- **Session switching** — click any session in the health panel to pin it, or use **Budi: Select Session** command
-- **Auto-tracking** — the proxy detects session activity and updates automatically
+- **One status bar item.** No sidebar, no session list, no tips feed.
+- **Provider-scoped to `cursor`.** Never blends Claude Code, Codex, or Copilot CLI usage into the Cursor surface (ADR-0088 §7).
+- **Rolling 1d / 7d / 30d windows.** The same shape the Claude Code statusline uses — the rolling-window contract is pinned in [`docs/statusline-contract.md`](https://github.com/siropkin/budi/blob/main/docs/statusline-contract.md) in the main repo.
+- **Green-circle brand.** Matches the green dot on [getbudi.dev](https://getbudi.dev).
+
+## Status bar at a glance
+
+```
+🟢 budi · $2.34 1d · $12.50 7d · $48.10 30d
+```
+
+| Indicator | Meaning                                                                       |
+| --------- | ----------------------------------------------------------------------------- |
+| 🟢 green  | Daemon reachable, Cursor traffic recorded in the rolling window.              |
+| 🟡 yellow | Daemon reachable, no Cursor traffic in the rolling window (not an error).     |
+| 🔴 red    | Daemon unreachable or `api_version` too old. Tooltip points to `budi doctor`. |
+| ⚪ gray   | Extension starting up, first reading not yet fetched.                         |
+
+Click the item to open the cloud dashboard. When there is an active Cursor session it opens `<cloud>/dashboard/sessions`; otherwise it opens `<cloud>/dashboard` — the same click-through behaviour as the Claude Code statusline.
 
 ## Prerequisites
 
-- **budi** installed and initialized (`budi init`)
-- **budi-daemon** running (starts automatically after `budi init`)
-- Cursor's `Override OpenAI Base URL` set to `http://localhost:9878` (Cursor Settings → Models) so LLM traffic routes through the budi proxy
+- **budi** installed and initialised (`budi init`).
+- **budi-daemon** running (starts automatically after `budi init`).
+- Cursor's `Override OpenAI Base URL` set to `http://localhost:9878` (Cursor Settings → Models) so LLM traffic routes through the budi proxy.
 
 ## Install
 
@@ -29,13 +44,13 @@ Run `budi doctor` to verify.
 
 After install/reload, validate in under a minute:
 
-1. Run `budi doctor` and confirm daemon + proxy are healthy
-2. Verify `Override OpenAI Base URL` is set to `http://localhost:9878` in Cursor Settings → Models
-3. Send one prompt in Cursor chat
-4. Click the budi status bar item (`🟢/🟡/🔴`) to open the health panel
-5. If no session appears yet, run **Budi: Refresh Status** once
+1. Run `budi doctor` and confirm daemon + proxy are healthy.
+2. Verify `Override OpenAI Base URL` is set to `http://localhost:9878` in Cursor Settings → Models.
+3. Send one prompt in Cursor chat.
+4. The status bar item should turn 🟢 green within one poll cycle and show non-zero 1d spend.
+5. If it stays 🟡 yellow, run **Budi: Refresh Status** once.
 
-**Manual install** (if auto-install was skipped or you want to rebuild):
+### Manual install (build from source)
 
 ```bash
 git clone https://github.com/siropkin/budi-cursor.git && cd budi-cursor
@@ -48,56 +63,60 @@ npx vsce package --no-dependencies -o cursor-budi.vsix
 cursor --install-extension cursor-budi.vsix --force
 ```
 
-Then reload Cursor: **Cmd+Shift+P** → **Developer: Reload Window**
+Then reload Cursor: **Cmd+Shift+P** → **Developer: Reload Window**.
 
 ## Commands
 
-| Command                       | Description                                |
-| ----------------------------- | ------------------------------------------ |
-| **Budi: Toggle Health Panel** | Open/focus the health side panel           |
-| **Budi: Select Session**      | Pick which session to display (quick pick) |
-| **Budi: Open Dashboard**      | Open the budi web dashboard                |
-| **Budi: Refresh Status**      | Force-refresh status bar data              |
+| Command                  | Description                                                          |
+| ------------------------ | -------------------------------------------------------------------- |
+| **Budi: Open Dashboard** | Open the budi cloud dashboard (session list when a session is live). |
+| **Budi: Refresh Status** | Force-refresh the status bar immediately.                            |
 
 ## Configuration
 
-| Setting                  | Default                 | Description                      |
-| ------------------------ | ----------------------- | -------------------------------- |
-| `budi.pollingIntervalMs` | `15000`                 | Status bar refresh interval (ms) |
-| `budi.daemonUrl`         | `http://127.0.0.1:7878` | Daemon URL                       |
+| Setting                  | Default                   | Description                                                              |
+| ------------------------ | ------------------------- | ------------------------------------------------------------------------ |
+| `budi.pollingIntervalMs` | `15000`                   | How often to refresh the status bar (ms).                                |
+| `budi.daemonUrl`         | `http://127.0.0.1:7878`   | Local daemon base URL.                                                   |
+| `budi.cloudEndpoint`     | `https://app.getbudi.dev` | Cloud dashboard opened on click. Matches the Claude Code statusline URL. |
 
 ## How it works
 
-1. **Proxy** — LLM traffic from Cursor routes through the budi proxy (port 9878), which captures session activity and updates `cursor-sessions.json` in budi's data directory (`~/.local/share/budi` on Unix, `%LOCALAPPDATA%\budi` on Windows)
-2. **File watcher** — the extension watches both the session file and its parent directory, so it can detect active-session changes immediately (including when the file is created after extension startup)
-3. **Daemon** — `budi statusline --format json` (or direct HTTP to daemon) returns session cost, health state, and vitals
-4. **Health panel** — fetches session health details and lists recent sessions from `/analytics/sessions`
-
-## Limitations
-
-Cursor does not expose the currently focused chat tab to extensions. The extension tracks the most recently active session (via proxy activity). For passive tab switching, use **Budi: Select Session** or click a session in the health panel.
+1. **Proxy.** LLM traffic from Cursor routes through the budi proxy (port 9878); the daemon records every message locally, keyed by provider (`cursor` in this case). All business logic — cost, classification, attribution — lives in the Rust daemon.
+2. **Workspace signal.** The extension writes the active workspace path to `~/.local/share/budi/cursor-sessions.json` (v1 contract, ADR-0086 §3.4) so the daemon can associate Cursor proxy events with the workspace.
+3. **Shared status contract.** The extension calls `GET /analytics/statusline?provider=cursor` and renders the response. The contract is defined once in `docs/statusline-contract.md` and reused by the CLI statusline, this extension, and the cloud dashboard — so all three surfaces read identically.
+4. **No re-implementation of cost logic.** If Claude Code's statusline shows `$X 1d · $Y 7d · $Z 30d`, this extension shows the same thing with `provider=cursor` scoping. If it doesn't, neither do we.
 
 ## Troubleshooting
 
-**Status bar says offline / panel shows daemon offline**
+**Status bar says `offline` / circle is red**
 
-1. Run `budi doctor` and confirm daemon health
-2. Run `budi init` if the daemon is not running
-3. If you changed `budi.daemonUrl`, run **Budi: Refresh Status** (or reload Cursor) to force an immediate reconnect
+1. Run `budi doctor` to check daemon + proxy health.
+2. Run `budi init` if the daemon is not running.
+3. If you changed `budi.daemonUrl`, run **Budi: Refresh Status** (or reload Cursor).
 
-**Session does not switch quickly after chat activity**
+**Circle stays 🟡 yellow after sending prompts**
 
-1. Confirm the proxy is running (`budi doctor`)
-2. Verify `Override OpenAI Base URL` is set to `http://localhost:9878` in Cursor Settings → Models
-3. Send one message in Cursor to create/update `cursor-sessions.json`
-4. Use **Budi: Select Session** to pin manually when switching passively between chats
+1. Confirm the proxy is running and intercepting Cursor traffic (`budi doctor`).
+2. Verify `Override OpenAI Base URL` is set to `http://localhost:9878` in Cursor Settings → Models.
+3. Send a second message — the first 24h can read zero if the prompt was served from cache.
 
-**Panel data is stale**
+**API-version warning on startup**
 
-- The extension updates on both event-driven file changes and periodic polling (`budi.pollingIntervalMs`, default 15s)
-- Use **Budi: Refresh Status** for an immediate refresh
+You are running an older `budi` daemon than this extension requires. Run `budi update` or reinstall via the instructions at [getbudi.dev](https://getbudi.dev).
+
+## What changed in 1.1.0
+
+- **Removed** the side panel, session list, vitals grid, tips feed, and `Budi: Select Session` / `Budi: Toggle Health Panel` commands. 8.1 is decidedly statusline-only (ADR-0088 §7).
+- **Added** provider-scoped contract consumption (`?provider=cursor`). Cursor and Claude Code spend are never blended.
+- **Changed** the status bar format to match the Claude Code statusline: `budi · $X 1d · $Y 7d · $Z 30d`.
+- **Changed** the click-through URL to point at `https://app.getbudi.dev/dashboard/sessions` (session active) or `/dashboard` (no session), mirroring the Claude Code statusline.
+- **Added** the green-circle brand mark on the marketplace tile.
+
+A sidebar may reappear in a future release if real usage demands it. 8.1 optimises for "leave it on all day, never think about it".
 
 ## Ecosystem
 
-- **[budi](https://github.com/siropkin/budi)** — Rust daemon + CLI (required)
-- **[budi-cloud](https://github.com/siropkin/budi-cloud)** — Cloud dashboard and ingest API
+- **[budi](https://github.com/siropkin/budi)** — Rust daemon + CLI (required).
+- **[budi-cloud](https://github.com/siropkin/budi-cloud)** — Cloud dashboard and ingest API.
+- **[getbudi.dev](https://github.com/siropkin/getbudi.dev)** — Public marketing site.
