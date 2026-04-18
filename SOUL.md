@@ -1,6 +1,6 @@
 # SOUL.md
 
-VS Code / Cursor extension for **budi** — shows session health and spend in the status bar and a side panel, by talking to a locally-running `budi-daemon` over HTTP and shelling out to the `budi` CLI for statusline rendering.
+VS Code / Cursor extension for **budi** — renders Cursor-only spend in a single status bar item (no sidebar; see `§What the extension does`) by talking to a locally-running `budi-daemon` over HTTP and shelling out to the `budi` CLI for statusline rendering.
 
 This repo is **presentation only**. It does not touch SQLite, does not compute cost, does not classify prompts. Business logic lives in [`siropkin/budi`](https://github.com/siropkin/budi). Keep it that way.
 
