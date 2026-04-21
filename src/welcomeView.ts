@@ -40,7 +40,6 @@ export interface WelcomeViewDeps {
 }
 
 let currentPanel: vscode.WebviewPanel | undefined;
-let currentStage: WelcomeStage = "needs-install";
 let deps: WelcomeViewDeps = {};
 
 function resolvePlatform(): NodeJS.Platform {
@@ -66,7 +65,6 @@ export function showWelcome(
   options: WelcomeViewDeps = {},
 ): vscode.WebviewPanel {
   deps = options;
-  currentStage = stage;
 
   if (currentPanel) {
     currentPanel.reveal(vscode.ViewColumn.Active);
@@ -125,7 +123,6 @@ export function showWelcome(
 
 /** Advance the welcome view from "install budi" to "run `budi init`". */
 export function transitionTo(stage: WelcomeStage): void {
-  currentStage = stage;
   if (!currentPanel) return;
   currentPanel.webview.html = renderHtml(stage, resolvePlatform());
   currentPanel.reveal(vscode.ViewColumn.Active);
@@ -145,10 +142,6 @@ export function hideWelcome(): void {
 
 export function isWelcomeVisible(): boolean {
   return currentPanel !== undefined;
-}
-
-export function currentWelcomeStage(): WelcomeStage {
-  return currentStage;
 }
 
 function openInstallCommandInTerminal(platform: NodeJS.Platform): void {

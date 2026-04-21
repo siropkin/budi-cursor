@@ -17,8 +17,6 @@ export interface StatuslineData {
   cost_7d?: number;
   /** Rolling last 30 days, dollars. */
   cost_30d?: number;
-  /** Echoes the `provider` filter applied by the daemon. */
-  provider_scope?: string;
   /** Most recent provider seen inside the 1d window, after the provider filter. */
   active_provider?: string;
   // Deprecated 8.0 aliases. The daemon still populates these with the same
@@ -39,13 +37,6 @@ export interface ResolvedCosts {
   cost1d: number;
   cost7d: number;
   cost30d: number;
-  /**
-   * True when the daemon only returned the deprecated 8.0 aliases
-   * (`today_cost` / `week_cost` / `month_cost`) and not the canonical
-   * rolling fields. Lets the extension log a one-time warning about
-   * talking to a pre-#224 daemon.
-   */
-  usedLegacyAliases: boolean;
 }
 
 /** The minimum daemon api_version this extension requires. */
@@ -71,10 +62,6 @@ function formatCost(dollars: number): string {
  * stay byte-for-byte aligned during the 8.0 → 8.1 cutover.
  */
 export function resolveCosts(data: StatuslineData): ResolvedCosts {
-  const hasNew =
-    typeof data.cost_1d === "number" ||
-    typeof data.cost_7d === "number" ||
-    typeof data.cost_30d === "number";
   const pick = (primary: number | undefined, legacy: number | undefined): number => {
     if (typeof primary === "number" && Number.isFinite(primary)) return primary;
     if (typeof legacy === "number" && Number.isFinite(legacy)) return legacy;
@@ -84,7 +71,6 @@ export function resolveCosts(data: StatuslineData): ResolvedCosts {
     cost1d: pick(data.cost_1d, data.today_cost),
     cost7d: pick(data.cost_7d, data.week_cost),
     cost30d: pick(data.cost_30d, data.month_cost),
-    usedLegacyAliases: !hasNew,
   };
 }
 

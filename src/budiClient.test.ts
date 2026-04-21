@@ -29,7 +29,6 @@ describe("resolveCosts", () => {
       cost1d: 1.23,
       cost7d: 4.56,
       cost30d: 7.89,
-      usedLegacyAliases: false,
     });
   });
 
@@ -43,7 +42,6 @@ describe("resolveCosts", () => {
     expect(resolved.cost1d).toBe(2);
     expect(resolved.cost7d).toBe(10);
     expect(resolved.cost30d).toBe(40);
-    expect(resolved.usedLegacyAliases).toBe(true);
   });
 
   it("defaults missing fields to 0", () => {
@@ -52,7 +50,6 @@ describe("resolveCosts", () => {
       cost1d: 0,
       cost7d: 0,
       cost30d: 0,
-      usedLegacyAliases: true,
     });
   });
 });
@@ -63,7 +60,6 @@ describe("formatCostLine", () => {
       cost1d: 2.34,
       cost7d: 12.5,
       cost30d: 48.1,
-      usedLegacyAliases: false,
     });
     expect(line).toBe("$2.34 1d · $12.50 7d · $48.10 30d");
   });
@@ -73,7 +69,6 @@ describe("formatCostLine", () => {
       cost1d: 0,
       cost7d: 0,
       cost30d: 0,
-      usedLegacyAliases: false,
     });
     expect(line).toBe("$0.00 1d · $0.00 7d · $0.00 30d");
   });
@@ -83,7 +78,6 @@ describe("formatCostLine", () => {
       cost1d: 100,
       cost7d: 999,
       cost30d: 1500,
-      usedLegacyAliases: false,
     });
     expect(line).toBe("$100 1d · $999 7d · $1.5K 30d");
   });
