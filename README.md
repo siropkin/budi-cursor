@@ -95,9 +95,9 @@ Then reload Cursor: **Cmd+Shift+P** → **Developer: Reload Window**.
 
 ## How it works
 
-1. **Transcript tailer (no proxy, no Cursor-settings changes).** The budi daemon tails Cursor's local transcript/session files as they are written (ADR-0089) and reconciles cost/token totals from the Cursor Usage API on a pull cadence. All business logic — cost, classification, attribution — lives in the Rust daemon. Nothing is routed through an HTTP proxy and no Cursor base-URL override is involved.
-2. **Workspace signal.** The extension writes the active workspace path to `~/.local/share/budi/cursor-sessions.json` (v1 contract, ADR-0086 §3.4) so the daemon can associate Cursor session activity with the workspace.
-3. **Shared status contract.** The extension calls `GET /analytics/statusline?provider=cursor` and renders the response. The contract is defined once in `docs/statusline-contract.md` and reused by the CLI statusline, this extension, and the cloud dashboard — so all three surfaces read identically.
+1. **Transcript tailer (no proxy, no Cursor-settings changes).** The budi daemon tails Cursor's local transcript/session files as they are written and reconciles cost/token totals from the Cursor Usage API on a pull cadence. All business logic — cost, classification, attribution — lives in the Rust daemon. Nothing is routed through an HTTP proxy and no Cursor base-URL override is involved.
+2. **Workspace signal.** The extension writes the active workspace path to `~/.local/share/budi/cursor-sessions.json` so the daemon can associate Cursor session activity with the workspace.
+3. **Shared status contract.** The extension calls `GET /analytics/statusline?provider=cursor` and renders the response — the same rolling 1d / 7d / 30d shape the CLI statusline and the cloud dashboard use, so all three surfaces read identically.
 4. **No re-implementation of cost logic.** If Claude Code's statusline shows `$X 1d · $Y 7d · $Z 30d`, this extension shows the same thing with `provider=cursor` scoping. If it doesn't, neither do we.
 
 ## Troubleshooting

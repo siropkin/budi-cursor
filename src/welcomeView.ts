@@ -229,7 +229,7 @@ function renderInstallStage(cmd: InstallCommand): string {
   <button class="secondary" onclick="send('recheck')">I already installed it</button>
 </div>
 
-<p class="footnote">The command is pre-filled in Cursor's integrated terminal — you press enter yourself after you've read it. Read the source at <a href="https://github.com/siropkin/budi/blob/main/scripts/install-standalone.sh">scripts/install-standalone.sh</a>.</p>
+<p class="footnote">The command is pre-filled in Cursor's integrated terminal — read it before pressing enter.</p>
 
 <script>
   const vscode = acquireVsCodeApi();
