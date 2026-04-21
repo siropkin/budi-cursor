@@ -3,6 +3,20 @@
 All notable changes to the `budi` Cursor extension are tracked here. The
 Cursor extension follows the main `siropkin/budi` release rhythm.
 
+## 1.3.1 — user-visible extension copy cleanup
+
+_Tracked in `siropkin/budi-cursor#10` and `siropkin/budi-cursor#11`. Budi has no existing users, so cross-version narrative ("Starting with v1.1.0…", three stacked "What changed in 1.x" sections) and ADR/main-repo doc links on the marketplace README and welcome view were teaching a history the fresh installer never lived through and creating future broken-link liability._
+
+### Changed
+
+- **Rewrote** the marketplace-visible README in present tense. Dropped the "Starting with v1.1.0…" and "Starting with v1.2.0…" lead-ins; removed the three "What changed in 1.3.0 / 1.2.0 / 1.1.0" sections entirely. `CHANGELOG.md` remains the version history of record.
+- **Stripped** ADR-XXXX parentheticals, `siropkin/budi#NNN` PR references, and pointers to `docs/statusline-contract.md` from `README.md`. Behaviour is described directly (rolling 1d / 7d / 30d shape, `?provider=cursor` scoping) without forcing fresh users to chase cross-repo doc paths.
+- **Replaced** the in-editor welcome-view footnote that linked out to `scripts/install-standalone.sh` in the main repo with a neutral "read it before pressing enter" line.
+
+### Scope
+
+- ADR/PR references remain load-bearing in `SOUL.md`, `AGENTS.md`, source doc-comments, and CI grep guards — intentionally untouched. The milestone is user-visible surfaces only.
+
 ## 1.3.0 — 8.2 tailer alignment (drops proxy-era copy)
 
 _Tracked in `siropkin/budi#437`. Budi 8.2 retired the on-machine HTTP proxy (ADR-0089): live cost capture for every supported provider is now the local transcript tailer. The extension's marketplace listing, bundled README, and welcome view still described the dead 8.0/8.1 install flow and were misdirecting fresh users on the recommended install path._
