@@ -43,3 +43,11 @@ jobs:
           npm run build
           npx vsce package --no-dependencies -o cursor-budi.vsix
           test -s cursor-budi.vsix
+
+      - name: Grep guard — no 8.0/8.1 proxy-era strings (siropkin/budi#437)
+        run: |
+          set -e
+          if grep -RInE '(9878|Override OpenAI Base URL)' out/ README.md; then
+            echo "::error::Proxy-era strings (9878 / Override OpenAI Base URL) reappeared in build artifacts or README. See siropkin/budi#437."
+            exit 1
+          fi

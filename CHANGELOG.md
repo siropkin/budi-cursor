@@ -3,6 +3,29 @@
 All notable changes to the `budi` Cursor extension are tracked here. The
 Cursor extension follows the main `siropkin/budi` release rhythm.
 
+## 1.3.0 — 8.2 tailer alignment (drops proxy-era copy)
+
+_Tracked in `siropkin/budi#437`. Budi 8.2 retired the on-machine HTTP proxy (ADR-0089): live cost capture for every supported provider is now the local transcript tailer. The extension's marketplace listing, bundled README, and welcome view still described the dead 8.0/8.1 install flow and were misdirecting fresh users on the recommended install path._
+
+### Changed
+
+- **Removed** every reference to the 8.0/8.1 proxy from user-visible surfaces:
+  - README Prerequisites no longer asks users to override Cursor's model base URL. Cursor is used normally; the daemon tails transcripts and pulls cost from the Cursor Usage API.
+  - README How-it-works explains the tailer + Usage API reconciliation (ADR-0089) instead of the old routing story.
+  - README Troubleshooting drops the proxy-status checks; `budi doctor` now reports transcript visibility instead.
+  - Welcome view's init hand-off step no longer tells users `budi init` "starts the proxy"; it describes the daemon + transcript tailer.
+  - `sessionStore.ts` comment updated — the workspace-signal file correlates tailed transcript activity, not proxy events.
+- **Added** a Cursor cost-lag caveat to the Troubleshooting section: cost from the Cursor Usage API can trail live chat by up to ~10 minutes, which is expected and not a yellow-circle bug.
+
+### CI
+
+- Added a build-artifact grep guard to `ci.yml` and `release.yml` that fails the job if the dead proxy-setup strings reappear in `out/` or the README. Prevents regression of the fresh-user trust bug this release fixes.
+
+### Notes
+
+- No functional change: the daemon already stopped listening on the proxy port in the 8.2 release that shipped in `siropkin/budi` weeks ago. This ticket closes the documentation gap that was sending fresh Cursor-marketplace users down a dead path.
+- Cross-repo PR body references `siropkin/budi#437` for two-way navigability. Marketplace republish at `1.3.0` is part of closing that ticket.
+
 ## 1.2.0 — 8.1 onboarding entry point
 
 _Tracked in `siropkin/budi#314`, governed by ADR-0088 §6 (onboarding scope is strictly local)._
