@@ -1,14 +1,14 @@
 # SOUL.md
 
-VS Code / Cursor extension for **budi** — renders Cursor-only spend in a single status bar item (no sidebar; see `§What the extension does`) by talking to a locally-running `budi-daemon` over HTTP and shelling out to the `budi` CLI for statusline rendering.
+VS Code / Cursor extension for **budi** — renders Cursor-only spend in a single status bar item (no sidebar; see `§What the extension does`) by polling a locally-running `budi-daemon` over HTTP (`/analytics/statusline?provider=cursor` + `/health`).
 
-This repo is **presentation only**. It does not touch SQLite, does not compute cost, does not classify prompts. Business logic lives in [`siropkin/budi`](https://github.com/siropkin/budi). Keep it that way.
+This repo is **presentation only**. It does not touch SQLite, does not compute cost, does not classify prompts, does not read Cursor transcripts. Business logic — including the transcript tailer that feeds the daemon under 8.2 / ADR-0089 — lives in [`siropkin/budi`](https://github.com/siropkin/budi). Keep it that way.
 
 ## Product boundaries
 
 | Product | Repo | Role |
 |---------|------|------|
-| **budi-core** | [`siropkin/budi`](https://github.com/siropkin/budi) | Rust: daemon, CLI, proxy, all business logic. Owns SQLite. |
+| **budi-core** | [`siropkin/budi`](https://github.com/siropkin/budi) | Rust: daemon, CLI, transcript tailer, all business logic. Owns SQLite. |
 | **budi-cursor** | **this repo** (`siropkin/budi-cursor`) | VS Code/Cursor extension (TypeScript). Renders what the daemon returns. |
 | **budi-cloud** | [`siropkin/budi-cloud`](https://github.com/siropkin/budi-cloud) | Next.js + Supabase cloud dashboard at `app.getbudi.dev`. Unrelated to this extension. |
 
@@ -17,23 +17,26 @@ Extraction was completed per [ADR-0086](https://github.com/siropkin/budi/blob/ma
 ## Build & test
 
 ```bash
-npm install
-npm run compile       # tsc to out/
+npm ci
+npm run build         # tsc to out/
 npm run watch         # tsc in watch mode
-npm test              # run unit tests (Vitest)
-npm run package       # produce .vsix via vsce
-npm run publish       # publish to VS Code Marketplace (vsce publish)
+npm test              # Vitest
+npm run lint
+npm run format:check
+npm run package       # produce cursor-budi.vsix via vsce
 ```
+
+Marketplace publishing is driven from `.github/workflows/release.yml`; there is no local `publish` script.
 
 ## Install (for users)
 
 - VS Code Marketplace: search for "budi"
 - From CLI: `budi integrations install --with cursor-extension` (main repo drives this)
-- Manual: `code --install-extension budi-*.vsix`
+- Manual: `cursor --install-extension cursor-budi.vsix --force`
 
 Extension activates on `onStartupFinished`. No configuration required; it auto-discovers the daemon on `127.0.0.1:7878`.
 
-## What the extension does (8.1 / v1.1.x and later)
+## What the extension does
 
 Per ADR-0088 §7 and `siropkin/budi#232`, the extension is intentionally **statusline-only**:
 
