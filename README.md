@@ -2,11 +2,11 @@
 
 A quiet, provider-scoped status bar for budi. Shows **Cursor-only** spend over the last **1d / 7d / 30d** — byte-for-byte matching the Claude Code statusline, filtered to the Cursor provider.
 
-Starting with `v1.1.0` the extension is intentionally statusline-only:
+The extension is intentionally statusline-only:
 
 - **One status bar item.** No sidebar, no session list, no tips feed.
-- **Provider-scoped to `cursor`.** Never blends Claude Code, Codex, or Copilot CLI usage into the Cursor surface (ADR-0088 §7).
-- **Rolling 1d / 7d / 30d windows.** The same shape the Claude Code statusline uses — the rolling-window contract is pinned in [`docs/statusline-contract.md`](https://github.com/siropkin/budi/blob/main/docs/statusline-contract.md) in the main repo.
+- **Provider-scoped to `cursor`.** Never blends Claude Code, Codex, or Copilot CLI usage into the Cursor surface.
+- **Rolling 1d / 7d / 30d windows.** The same shape the Claude Code statusline uses, so the Cursor surface and the Claude Code surface read identically for their respective providers.
 - **Green-circle brand.** Matches the green dot on [getbudi.dev](https://getbudi.dev).
 
 ## Status bar at a glance
@@ -33,7 +33,7 @@ Click the item to open the cloud dashboard. When there is an active Cursor sessi
 
 ## First-run (no daemon installed yet)
 
-Starting with `v1.2.0` the extension is a first-class **onboarding entry point**. If you discovered budi via the marketplace and haven't installed the daemon yet:
+If you discovered budi via the marketplace and haven't installed the daemon yet, the extension is a first-class onboarding entry point:
 
 1. The status bar shows a gray ⚪ `budi · setup` — this is not an error, just "not installed yet".
 2. Click the status bar item. The extension opens a welcome view inside Cursor with the one-line install command for your platform.
@@ -116,30 +116,6 @@ Then reload Cursor: **Cmd+Shift+P** → **Developer: Reload Window**.
 **API-version warning on startup**
 
 You are running an older `budi` daemon than this extension requires. Run `budi update` or reinstall via the instructions at [getbudi.dev](https://getbudi.dev).
-
-## What changed in 1.3.0
-
-- **Removed** every reference to the 8.0/8.1 HTTP-proxy install flow from the README, the bundled marketplace readme, and the in-editor welcome view (siropkin/budi#437). Budi 8.2 retired that flow in favour of the local transcript tailer (ADR-0089); the extension docs now describe the tailer-based flow fresh users actually walk.
-- **Changed** the troubleshooting copy to lead with `budi doctor` transcript-visibility and an explicit "Cursor Usage API can lag ~10 min" caveat instead of the old proxy-status checks.
-- **Added** a CI grep guard in `ci.yml` / `release.yml` that fails the build if the dead proxy-setup strings reappear in the package or its readme.
-
-## What changed in 1.2.0
-
-- **Added** first-class onboarding entry point (siropkin/budi#314). Users who discover the extension first (no daemon on disk) now see a gray ⚪ `budi · setup` status bar and a welcome view with a pre-filled install command and a `budi init && budi doctor` hand-off. The welcome view closes automatically after the first Cursor reading.
-- **Added** a new `firstRun` health state distinct from `offline`. "Never installed" is not rendered as an error.
-- **Added** `Budi: Show Welcome / First-Run Setup` command.
-- **Added** local-only onboarding counters at `~/.local/share/budi/cursor-onboarding.json` so `budi doctor` can show install-funnel health without any remote telemetry.
-- **Updated** marketplace description to explain that the extension can install budi for users who don't have it yet.
-
-## What changed in 1.1.0
-
-- **Removed** the side panel, session list, vitals grid, tips feed, and `Budi: Select Session` / `Budi: Toggle Health Panel` commands. 8.1 is decidedly statusline-only (ADR-0088 §7).
-- **Added** provider-scoped contract consumption (`?provider=cursor`). Cursor and Claude Code spend are never blended.
-- **Changed** the status bar format to match the Claude Code statusline: `budi · $X 1d · $Y 7d · $Z 30d`.
-- **Changed** the click-through URL to point at `https://app.getbudi.dev/dashboard/sessions` (session active) or `/dashboard` (no session), mirroring the Claude Code statusline.
-- **Added** the green-circle brand mark on the marketplace tile.
-
-A sidebar may reappear in a future release if real usage demands it. 8.1 optimises for "leave it on all day, never think about it".
 
 ## Ecosystem
 
