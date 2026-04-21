@@ -29,7 +29,7 @@ Click the item to open the cloud dashboard. When there is an active Cursor sessi
 
 - **budi** installed and initialised (`budi init`).
 - **budi-daemon** running (starts automatically after `budi init`).
-- Cursor's `Override OpenAI Base URL` set to `http://localhost:9878` (Cursor Settings → Models) so LLM traffic routes through the budi proxy.
+- Use Cursor normally. No Cursor settings changes are required — the daemon tails Cursor's local transcripts and pulls cost from the Cursor Usage API in the background.
 
 ## First-run (no daemon installed yet)
 
@@ -57,11 +57,10 @@ Run `budi doctor` to verify.
 
 After install/reload, validate in under a minute:
 
-1. Run `budi doctor` and confirm daemon + proxy are healthy.
-2. Verify `Override OpenAI Base URL` is set to `http://localhost:9878` in Cursor Settings → Models.
-3. Send one prompt in Cursor chat.
-4. The status bar item should turn 🟢 green within one poll cycle and show non-zero 1d spend.
-5. If it stays 🟡 yellow, run **Budi: Refresh Status** once.
+1. Run `budi doctor` and confirm the daemon + tailer are healthy and Cursor transcripts are visible.
+2. Send one prompt in Cursor chat.
+3. The status bar item should turn 🟢 green within one poll cycle and show non-zero 1d spend. Cursor cost can lag the Usage API by up to ~10 minutes, so wait a cycle before worrying about a 🟡 yellow reading.
+4. If it stays 🟡 yellow, run **Budi: Refresh Status** once.
 
 ### Manual install (build from source)
 
@@ -96,8 +95,8 @@ Then reload Cursor: **Cmd+Shift+P** → **Developer: Reload Window**.
 
 ## How it works
 
-1. **Proxy.** LLM traffic from Cursor routes through the budi proxy (port 9878); the daemon records every message locally, keyed by provider (`cursor` in this case). All business logic — cost, classification, attribution — lives in the Rust daemon.
-2. **Workspace signal.** The extension writes the active workspace path to `~/.local/share/budi/cursor-sessions.json` (v1 contract, ADR-0086 §3.4) so the daemon can associate Cursor proxy events with the workspace.
+1. **Transcript tailer (no proxy, no Cursor-settings changes).** The budi daemon tails Cursor's local transcript/session files as they are written (ADR-0089) and reconciles cost/token totals from the Cursor Usage API on a pull cadence. All business logic — cost, classification, attribution — lives in the Rust daemon. Nothing is routed through an HTTP proxy and no Cursor base-URL override is involved.
+2. **Workspace signal.** The extension writes the active workspace path to `~/.local/share/budi/cursor-sessions.json` (v1 contract, ADR-0086 §3.4) so the daemon can associate Cursor session activity with the workspace.
 3. **Shared status contract.** The extension calls `GET /analytics/statusline?provider=cursor` and renders the response. The contract is defined once in `docs/statusline-contract.md` and reused by the CLI statusline, this extension, and the cloud dashboard — so all three surfaces read identically.
 4. **No re-implementation of cost logic.** If Claude Code's statusline shows `$X 1d · $Y 7d · $Z 30d`, this extension shows the same thing with `provider=cursor` scoping. If it doesn't, neither do we.
 
@@ -105,19 +104,24 @@ Then reload Cursor: **Cmd+Shift+P** → **Developer: Reload Window**.
 
 **Status bar says `offline` / circle is red**
 
-1. Run `budi doctor` to check daemon + proxy health.
+1. Run `budi doctor` to check daemon + tailer health and Cursor transcript visibility.
 2. Run `budi init` if the daemon is not running.
 3. If you changed `budi.daemonUrl`, run **Budi: Refresh Status** (or reload Cursor).
 
 **Circle stays 🟡 yellow after sending prompts**
 
-1. Confirm the proxy is running and intercepting Cursor traffic (`budi doctor`).
-2. Verify `Override OpenAI Base URL` is set to `http://localhost:9878` in Cursor Settings → Models.
-3. Send a second message — the first 24h can read zero if the prompt was served from cache.
+1. Confirm the daemon is tailing Cursor transcripts (`budi doctor` shows transcript visibility).
+2. Cursor cost comes from the Cursor Usage API on a pull cadence and can lag the chat by up to ~10 minutes. Wait a cycle and send a second message if today's value still reads zero.
 
 **API-version warning on startup**
 
 You are running an older `budi` daemon than this extension requires. Run `budi update` or reinstall via the instructions at [getbudi.dev](https://getbudi.dev).
+
+## What changed in 1.3.0
+
+- **Removed** every reference to the 8.0/8.1 HTTP-proxy install flow from the README, the bundled marketplace readme, and the in-editor welcome view (siropkin/budi#437). Budi 8.2 retired that flow in favour of the local transcript tailer (ADR-0089); the extension docs now describe the tailer-based flow fresh users actually walk.
+- **Changed** the troubleshooting copy to lead with `budi doctor` transcript-visibility and an explicit "Cursor Usage API can lag ~10 min" caveat instead of the old proxy-status checks.
+- **Added** a CI grep guard in `ci.yml` / `release.yml` that fails the build if the dead proxy-setup strings reappear in the package or its readme.
 
 ## What changed in 1.2.0
 

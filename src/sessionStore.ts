@@ -6,8 +6,8 @@ import * as os from "os";
  * cursor-sessions.json v1 contract (ADR-0086 §3.4, §6).
  *
  * This file is written by the Cursor extension to signal which workspace is
- * currently active. The daemon may read it to correlate proxy events with the
- * active Cursor workspace.
+ * currently active. The daemon may read it to correlate tailed Cursor
+ * transcript activity with the active Cursor workspace.
  *
  * Format (v1):
  * ```json

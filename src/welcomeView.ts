@@ -263,7 +263,7 @@ function renderInitStage(initCommand: string): string {
 <h1><span class="dot" aria-hidden="true"></span> budi is installed — one more step</h1>
 <p class="muted">Finish setup and verify everything works.</p>
 
-<p>Run <code>budi init</code> to configure your agents and start the proxy, then <code>budi doctor</code> to verify. This command does both in order:</p>
+<p>Run <code>budi init</code> to start the daemon and discover your agents' local transcripts, then <code>budi doctor</code> to verify everything is healthy. This command does both in order:</p>
 <pre>${esc(initCommand)}</pre>
 
 <div class="actions">
