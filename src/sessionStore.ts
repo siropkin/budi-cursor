@@ -52,23 +52,6 @@ export function writeActiveWorkspace(workspacePath: string): void {
 }
 
 /**
- * Read the current active workspace from cursor-sessions.json.
- * Returns null if the file doesn't exist or is invalid.
- */
-export function readActiveWorkspace(): string | null {
-  try {
-    const raw = fs.readFileSync(SESSION_FILE, "utf-8");
-    const parsed = JSON.parse(raw);
-    if (parsed.version === CONTRACT_VERSION && typeof parsed.active_workspace === "string") {
-      return parsed.active_workspace;
-    }
-    return null;
-  } catch {
-    return null;
-  }
-}
-
-/**
  * Clear the active workspace signal (e.g., on deactivate).
  */
 export function clearActiveWorkspace(): void {

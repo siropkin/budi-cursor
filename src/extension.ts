@@ -32,7 +32,6 @@ let apiVersionWarningShown = false;
 let daemonOfflineWarningLogged = false;
 let lastState: HealthState = "gray";
 let everSawDaemon = false;
-let everSawCursorTraffic = false;
 
 export function activate(context: vscode.ExtensionContext): void {
   log = vscode.window.createOutputChannel("budi");
@@ -225,16 +224,10 @@ async function refreshData(
 
   // Drive the welcome view off the polled state so it stays in sync
   // without blocking the refresh loop on UI work.
-  syncWelcomeView(context, state, statusline, daemonUrl, cloudEndpoint);
+  syncWelcomeView(state, statusline);
 }
 
-function syncWelcomeView(
-  context: vscode.ExtensionContext,
-  state: HealthState,
-  statusline: StatuslineData | null,
-  daemonUrl: string,
-  cloudEndpoint: string,
-): void {
+function syncWelcomeView(state: HealthState, statusline: StatuslineData | null): void {
   if (!isWelcomeVisible()) return;
 
   // First successful Cursor-provider reading retires the welcome view.
@@ -242,7 +235,6 @@ function syncWelcomeView(
     const costs = resolveCosts(statusline ?? {});
     const hasCursorTraffic = costs.cost1d > 0 || costs.cost7d > 0 || costs.cost30d > 0;
     if (hasCursorTraffic) {
-      everSawCursorTraffic = true;
       hideWelcome();
       log.appendLine("[budi] first Cursor reading recorded — welcome view retired.");
       return;
@@ -268,12 +260,6 @@ function syncWelcomeView(
       "[budi] daemon still unreachable after install flow — run `budi doctor` once the install finishes.",
     );
   }
-
-  // Touch unused params to keep the lint honest even when the
-  // compiler does not flag them.
-  void daemonUrl;
-  void cloudEndpoint;
-  void everSawCursorTraffic;
 }
 
 function openWelcome(
