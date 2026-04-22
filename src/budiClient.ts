@@ -143,7 +143,7 @@ export function healthIndicator(state: HealthState): string {
   }
 }
 
-export interface ClickUrlOptions {
+interface ClickUrlOptions {
   cloudEndpoint: string;
   statusline: StatuslineData | null;
 }

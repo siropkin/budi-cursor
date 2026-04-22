@@ -33,7 +33,7 @@ import * as path from "path";
 
 export const COUNTERS_VERSION = 1;
 
-export const DEFAULT_COUNTERS_DIR = path.join(os.homedir(), ".local", "share", "budi");
+const DEFAULT_COUNTERS_DIR = path.join(os.homedir(), ".local", "share", "budi");
 export const DEFAULT_COUNTERS_FILE = path.join(DEFAULT_COUNTERS_DIR, "cursor-onboarding.json");
 
 export interface OnboardingCounters {
