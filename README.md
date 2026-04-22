@@ -33,13 +33,11 @@ Click the item to open the cloud dashboard. When there is an active Cursor sessi
 
 ## First-run (no daemon installed yet)
 
-If you discovered budi via the marketplace and haven't installed the daemon yet, the extension is a first-class onboarding entry point:
+If you discovered budi via the marketplace and haven't installed the daemon yet, the status bar shows a gray ⚪ `budi · setup`. Click it to open an in-editor welcome view that:
 
-1. The status bar shows a gray ⚪ `budi · setup` — this is not an error, just "not installed yet".
-2. Click the status bar item. The extension opens a welcome view inside Cursor with the one-line install command for your platform.
-3. Click **Open Terminal With This Command**. The command is pre-filled in Cursor's integrated terminal — you press enter yourself after reading it.
-4. After install finishes, click **I already installed it** (or the status bar refreshes on its own within one poll cycle).
-5. Click **Finish setup in terminal** to run `budi init && budi doctor`. Once Cursor traffic is recorded, the welcome view closes and the status bar turns 🟢 green.
+1. Pre-fills the one-line install command for your platform in Cursor's integrated terminal (you press enter yourself after reading it).
+2. Offers a **Finish setup in terminal** button that pre-fills `budi init && budi doctor` once the daemon is detected.
+3. Closes itself automatically on the first successful Cursor reading; the status bar turns 🟢 green.
 
 You can re-open the welcome view at any time with **Cmd+Shift+P → Budi: Show Welcome / First-Run Setup**.
 
@@ -59,7 +57,7 @@ After install/reload, validate in under a minute:
 
 1. Run `budi doctor` and confirm the daemon + tailer are healthy and Cursor transcripts are visible.
 2. Send one prompt in Cursor chat.
-3. The status bar item should turn 🟢 green within one poll cycle and show non-zero 1d spend. Cursor cost can lag the Usage API by up to ~10 minutes, so wait a cycle before worrying about a 🟡 yellow reading.
+3. The status bar item should turn 🟢 green within one poll cycle and show non-zero 1d spend. Cursor cost can lag the Usage API by up to ~10 minutes, so a 🟡 yellow reading in the first few minutes is normal.
 4. If it stays 🟡 yellow, run **Budi: Refresh Status** once.
 
 ### Manual install (build from source)
@@ -67,11 +65,8 @@ After install/reload, validate in under a minute:
 ```bash
 git clone https://github.com/siropkin/budi-cursor.git && cd budi-cursor
 npm ci
-npm run lint
-npm run format:check
-npm run test
-npm run build
-npx vsce package --no-dependencies -o cursor-budi.vsix
+npm test
+npm run package
 cursor --install-extension cursor-budi.vsix --force
 ```
 
