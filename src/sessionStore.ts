@@ -30,7 +30,7 @@ interface CursorSessionsV1 {
 }
 
 const STATE_DIR = path.join(os.homedir(), ".local", "share", "budi");
-export const SESSION_FILE = path.join(STATE_DIR, "cursor-sessions.json");
+const SESSION_FILE = path.join(STATE_DIR, "cursor-sessions.json");
 
 /**
  * Write the cursor-sessions.json v1 contract file to signal the active

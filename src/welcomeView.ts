@@ -31,28 +31,12 @@ import { recordCounterEvent } from "./onboardingCounters";
 export type WelcomeStage = "needs-install" | "needs-init";
 
 export interface WelcomeViewDeps {
-  /** Optional platform override for tests. Defaults to `process.platform`. */
-  platform?: NodeJS.Platform;
   /** Optional recheck hook. Called when the user clicks "I already installed it". */
   onRecheck?: () => Promise<void> | void;
-  /** Optional counter sink override for tests. */
-  recordEvent?: (event: Parameters<typeof recordCounterEvent>[0]) => void;
 }
 
 let currentPanel: vscode.WebviewPanel | undefined;
-let deps: WelcomeViewDeps = {};
-
-function resolvePlatform(): NodeJS.Platform {
-  return deps.platform ?? process.platform;
-}
-
-function record(event: Parameters<typeof recordCounterEvent>[0]): void {
-  if (deps.recordEvent) {
-    deps.recordEvent(event);
-    return;
-  }
-  recordCounterEvent(event);
-}
+let currentOnRecheck: WelcomeViewDeps["onRecheck"];
 
 /**
  * Open (or reveal) the welcome view at the given stage. The view is a
@@ -64,11 +48,11 @@ export function showWelcome(
   stage: WelcomeStage,
   options: WelcomeViewDeps = {},
 ): vscode.WebviewPanel {
-  deps = options;
+  currentOnRecheck = options.onRecheck;
 
   if (currentPanel) {
     currentPanel.reveal(vscode.ViewColumn.Active);
-    currentPanel.webview.html = renderHtml(stage, resolvePlatform());
+    currentPanel.webview.html = renderHtml(stage, process.platform);
     return currentPanel;
   }
 
@@ -82,24 +66,24 @@ export function showWelcome(
     },
   );
 
-  panel.webview.html = renderHtml(stage, resolvePlatform());
+  panel.webview.html = renderHtml(stage, process.platform);
 
-  record("welcome_view_impression");
+  recordCounterEvent("welcome_view_impression");
 
   panel.webview.onDidReceiveMessage(
     async (msg: { type?: string }) => {
       if (!msg || typeof msg.type !== "string") return;
       switch (msg.type) {
         case "openInstallTerminal":
-          record("open_terminal_click");
-          openInstallCommandInTerminal(resolvePlatform());
+          recordCounterEvent("open_terminal_click");
+          openInstallCommandInTerminal(process.platform);
           return;
         case "recheck":
-          if (deps.onRecheck) await deps.onRecheck();
+          if (currentOnRecheck) await currentOnRecheck();
           return;
         case "runInit":
-          record("handoff_completed");
-          runInitInTerminal(resolvePlatform());
+          recordCounterEvent("handoff_completed");
+          runInitInTerminal(process.platform);
           return;
         default:
           return;
@@ -124,7 +108,7 @@ export function showWelcome(
 /** Advance the welcome view from "install budi" to "run `budi init`". */
 export function transitionTo(stage: WelcomeStage): void {
   if (!currentPanel) return;
-  currentPanel.webview.html = renderHtml(stage, resolvePlatform());
+  currentPanel.webview.html = renderHtml(stage, process.platform);
   currentPanel.reveal(vscode.ViewColumn.Active);
 }
 
