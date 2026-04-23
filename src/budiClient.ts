@@ -77,8 +77,7 @@ export function resolveCosts(data: StatuslineData): ResolvedCosts {
 /**
  * Render the numeric portion of the statusline, byte-for-byte matching
  * the default Claude Code cost line (`$X 1d · $Y 7d · $Z 30d`) from
- * `crates/budi-cli/src/commands/statusline.rs`. The extension adds its
- * own leading health indicator on top of this string.
+ * `crates/budi-cli/src/commands/statusline.rs`.
  */
 export function formatCostLine(costs: ResolvedCosts): string {
   const parts = [
@@ -92,7 +91,10 @@ export function formatCostLine(costs: ResolvedCosts): string {
 export type HealthState = "green" | "yellow" | "red" | "gray" | "firstRun";
 
 /**
- * Decide which indicator to show, per siropkin/budi#232 and #314.
+ * Decide which health state the status bar is in, per siropkin/budi#232
+ * and #314. The state drives the status-bar copy (`budi`,
+ * `budi · offline`, `budi · setup`, `budi · $X 1d · …`) and the
+ * welcome-view lifecycle; no visible glyph rides on top of it.
  *
  * - `gray`     — extension is still starting up (no reading yet).
  * - `firstRun` — the daemon is unreachable **and** this extension install has
@@ -120,27 +122,6 @@ export function deriveHealthState(
   const hasTraffic = costs.cost1d > 0 || costs.cost7d > 0 || costs.cost30d > 0;
   if (hasTraffic) return "green";
   return "yellow";
-}
-
-/**
- * Render the health indicator as a unicode dot. These glyphs are
- * pixel-consistent across VS Code status bar themes and do not require
- * `ThemeColor` plumbing. The green dot matches the getbudi.dev brand
- * mark (`#22c55e`).
- */
-export function healthIndicator(state: HealthState): string {
-  switch (state) {
-    case "green":
-      return "\u{1F7E2}";
-    case "yellow":
-      return "\u{1F7E1}";
-    case "red":
-      return "\u{1F534}";
-    case "firstRun":
-    case "gray":
-    default:
-      return "\u26AA";
-  }
 }
 
 interface ClickUrlOptions {
@@ -204,13 +185,19 @@ export function buildTooltip(
   return lines.join("\n");
 }
 
+/**
+ * Build the status bar text. Mirrors Claude Code's CLI statusline
+ * shape (`$X 1d · $Y 7d · $Z 30d`) with a `budi ·` prefix and no
+ * leading health glyph — the `HealthState` drives the copy variants
+ * (`budi`, `budi · setup`, `budi · offline`) and the welcome-view
+ * lifecycle, not a visual indicator.
+ */
 export function buildStatusText(state: HealthState, statusline: StatuslineData | null): string {
-  const dot = healthIndicator(state);
-  if (state === "firstRun") return `${dot} budi · setup`;
-  if (state === "red") return `${dot} budi · offline`;
-  if (state === "gray") return `${dot} budi`;
+  if (state === "firstRun") return "budi · setup";
+  if (state === "red") return "budi · offline";
+  if (state === "gray") return "budi";
   const costs = resolveCosts(statusline ?? {});
-  return `${dot} budi · ${formatCostLine(costs)}`;
+  return `budi · ${formatCostLine(costs)}`;
 }
 
 /**

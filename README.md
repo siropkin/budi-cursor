@@ -7,21 +7,20 @@ The extension is intentionally statusline-only:
 - **One status bar item.** No sidebar, no session list, no tips feed.
 - **Provider-scoped to `cursor`.** Never blends Claude Code, Codex, or Copilot CLI usage into the Cursor surface.
 - **Rolling 1d / 7d / 30d windows.** The same shape the Claude Code statusline uses, so the Cursor surface and the Claude Code surface read identically for their respective providers.
-- **Green-circle brand.** Matches the green dot on [getbudi.dev](https://getbudi.dev).
 
 ## Status bar at a glance
 
 ```
-🟢 budi · $2.34 1d · $12.50 7d · $48.10 30d
+budi · $2.34 1d · $12.50 7d · $48.10 30d
 ```
 
-| Indicator | Meaning                                                                                    |
-| --------- | ------------------------------------------------------------------------------------------ |
-| 🟢 green  | Daemon reachable, Cursor traffic recorded in the rolling window.                           |
-| 🟡 yellow | Daemon reachable, no Cursor traffic in the rolling window (not an error).                  |
-| 🔴 red    | Daemon unreachable or `api_version` too old. Tooltip points to `budi doctor`.              |
-| ⚪ gray   | Extension starting up, first reading not yet fetched.                                      |
-| ⚪ setup  | First run — daemon hasn't been installed yet. Click for the install flow (`budi · setup`). |
+| State   | Status bar text                          | Meaning                                                                       |
+| ------- | ---------------------------------------- | ----------------------------------------------------------------------------- |
+| healthy | `budi · $X 1d · $Y 7d · $Z 30d`          | Daemon reachable, Cursor traffic recorded in the rolling window.              |
+| idle    | `budi · $0.00 1d · $0.00 7d · $0.00 30d` | Daemon reachable, no Cursor traffic in the rolling window (not an error).     |
+| offline | `budi · offline`                         | Daemon unreachable or `api_version` too old. Tooltip points to `budi doctor`. |
+| loading | `budi`                                   | Extension starting up, first reading not yet fetched.                         |
+| setup   | `budi · setup`                           | First run — daemon hasn't been installed yet. Click for the install flow.     |
 
 Click the item to open the cloud dashboard. When there is an active Cursor session it opens `<cloud>/dashboard/sessions`; otherwise it opens `<cloud>/dashboard` — the same click-through behaviour as the Claude Code statusline.
 
@@ -33,11 +32,11 @@ Click the item to open the cloud dashboard. When there is an active Cursor sessi
 
 ## First-run (no daemon installed yet)
 
-If you discovered budi via the marketplace and haven't installed the daemon yet, the status bar shows a gray ⚪ `budi · setup`. Click it to open an in-editor welcome view that:
+If you discovered budi via the marketplace and haven't installed the daemon yet, the status bar shows `budi · setup`. Click it to open an in-editor welcome view that:
 
 1. Pre-fills the one-line install command for your platform in Cursor's integrated terminal (you press enter yourself after reading it).
 2. Offers a **Finish setup in terminal** button that pre-fills `budi init && budi doctor` once the daemon is detected.
-3. Closes itself automatically on the first successful Cursor reading; the status bar turns 🟢 green.
+3. Closes itself automatically on the first successful Cursor reading; the status bar starts reporting spend.
 
 You can re-open the welcome view at any time with **Cmd+Shift+P → Budi: Show Welcome / First-Run Setup**.
 
@@ -57,8 +56,8 @@ After install/reload, validate in under a minute:
 
 1. Run `budi doctor` and confirm the daemon + tailer are healthy and Cursor transcripts are visible.
 2. Send one prompt in Cursor chat.
-3. The status bar item should turn 🟢 green within one poll cycle and show non-zero 1d spend. Cursor cost can lag the Usage API by up to ~10 minutes, so a 🟡 yellow reading in the first few minutes is normal.
-4. If it stays 🟡 yellow, run **Budi: Refresh Status** once.
+3. The status bar item should show a non-zero 1d spend within one poll cycle. Cursor cost can lag the Usage API by up to ~10 minutes, so seeing `$0.00 1d` in the first few minutes is normal.
+4. If 1d spend stays at `$0.00`, run **Budi: Refresh Status** once.
 
 ### Manual install (build from source)
 
@@ -97,13 +96,13 @@ Then reload Cursor: **Cmd+Shift+P** → **Developer: Reload Window**.
 
 ## Troubleshooting
 
-**Status bar says `offline` / circle is red**
+**Status bar says `budi · offline`**
 
 1. Run `budi doctor` to check daemon + tailer health and Cursor transcript visibility.
 2. Run `budi init` if the daemon is not running.
 3. If you changed `budi.daemonUrl`, run **Budi: Refresh Status** (or reload Cursor).
 
-**Circle stays 🟡 yellow after sending prompts**
+**1d spend stays at `$0.00` after sending prompts**
 
 1. Confirm the daemon is tailing Cursor transcripts (`budi doctor` shows transcript visibility).
 2. Cursor cost comes from the Cursor Usage API on a pull cadence and can lag the chat by up to ~10 minutes. Wait a cycle and send a second message if today's value still reads zero.

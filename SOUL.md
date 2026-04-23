@@ -40,10 +40,10 @@ Extension activates on `onStartupFinished`. No configuration required; it auto-d
 
 Per ADR-0088 §7, the extension is intentionally **statusline-only**:
 
-1. **One status bar item** — renders the shared provider-scoped status contract from the daemon, filtered to `provider=cursor`, in the same byte-for-byte shape the Claude Code statusline uses: `budi · $X 1d · $Y 7d · $Z 30d`. A leading dot glyph (🟢 / 🟡 / 🔴 / ⚪) reports extension health.
+1. **One status bar item** — renders the shared provider-scoped status contract from the daemon, filtered to `provider=cursor`, in the same byte-for-byte shape the Claude Code statusline uses: `budi · $X 1d · $Y 7d · $Z 30d`. No leading glyph; health collapses into the copy (`budi`, `budi · setup`, `budi · offline`) so the surface stays as quiet as the Claude Code CLI statusline.
 2. **Workspace signal** — writes the active workspace folder to `~/.local/share/budi/cursor-sessions.json` (v1 contract, ADR-0086 §3.4) so the daemon can resolve which workspace a Cursor session belongs to.
 3. **Click-through** — opens the cloud dashboard, mirroring the Claude Code statusline URL composition (`/dashboard/sessions` when a Cursor session is active, `/dashboard` otherwise).
-4. **Onboarding entry point (ADR-0088 §6)** — when the daemon has never been seen healthy on this install, the extension enters `firstRun` mode: the status bar shows `⚪ budi · setup` and clicking it opens a WebView welcome view with the canonical platform-specific install command and a `budi init && budi doctor` hand-off. The welcome view retires automatically on the first Cursor reading. Local-only counters (`~/.local/share/budi/cursor-onboarding.json`) are readable by `budi doctor`. Cross-surface local→cloud linking is owned by the main repo; the extension's onboarding scope is strictly local.
+4. **Onboarding entry point (ADR-0088 §6)** — when the daemon has never been seen healthy on this install, the extension enters `firstRun` mode: the status bar shows `budi · setup` and clicking it opens a WebView welcome view with the canonical platform-specific install command and a `budi init && budi doctor` hand-off. The welcome view retires automatically on the first Cursor reading. Local-only counters (`~/.local/share/budi/cursor-onboarding.json`) are readable by `budi doctor`. Cross-surface local→cloud linking is owned by the main repo; the extension's onboarding scope is strictly local.
 
 No sidebar, no session list, no vitals grid, no tips feed. If real usage demands a richer surface it must come back behind a flag; it must never become the default.
 
@@ -71,7 +71,7 @@ No sidebar, no session list, no vitals grid, no tips feed. If real usage demands
 - **No cross-provider blending.** The extension always sends `?provider=cursor`. Do not add summary surfaces that show blended multi-provider totals — ADR-0088 §7 is explicit that provider-scoped surfaces display their own provider only.
 - **Never read user prompts or code.** Only `/analytics/statusline` and `/health` are in scope. Do not call session-detail or message-content endpoints.
 - **Match the Claude Code statusline byte-for-byte where possible.** Number formatting, separator (` · `), slot labels (`1d` / `7d` / `30d`), and click-through URL shape are all mirrored from `crates/budi-cli/src/commands/statusline.rs` in the main repo. Drift is a bug.
-- **Graceful degradation.** If the daemon is not running, show a quiet red-dot "offline" state with a tooltip that points to `budi doctor`. Do not spam modal errors.
+- **Graceful degradation.** If the daemon is not running, show a quiet `budi · offline` statusline with a tooltip that points to `budi doctor`. Do not spam modal errors.
 - **API version skew.** The daemon's `api_version` is the contract. Bump `MIN_API_VERSION` in `budiClient.ts` when the extension starts depending on a new field shape, and warn users clearly when they are on an older daemon.
 - **Lockfile.** Commit `package-lock.json`. The extension must build reproducibly for Marketplace releases.
 - **VSIX bundling.** The main repo ships a pre-built `.vsix` with the CLI for integrations installs. When cutting a release here, refresh the bundled vsix in the main repo in lockstep.
