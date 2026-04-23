@@ -3,6 +3,22 @@
 All notable changes to the `budi` Cursor extension are tracked here. The
 Cursor extension follows the main `siropkin/budi` release rhythm.
 
+## 1.3.2 — drop leading health-dot glyph from the status bar
+
+_Tracked in `siropkin/budi-cursor#18`. The colored circle prefix (🟢 / 🟡 / 🔴 / ⚪) was redundant — the tooltip and the copy already distinguish the three non-healthy states, and the glyph did not carry information the text lacked. Claude Code's CLI statusline does not show one either, so dropping it brings the Cursor surface in line with the reference surface._
+
+### Changed
+
+- **Removed** the leading health-dot glyph from `buildStatusText`. Health collapses into the copy itself: `budi` (loading), `budi · setup` (first run), `budi · offline` (daemon unreachable), `budi · $X 1d · $Y 7d · $Z 30d` (healthy).
+- **Deleted** the now-unused `healthIndicator` helper from `src/budiClient.ts` and its test block.
+- **Rewrote** the README "Status bar at a glance" table — replaced the indicator-emoji column with a state → status-bar-text column. Updated the first-run, smoke-check, and troubleshooting paragraphs that were written around circle colors.
+- **Refreshed** the three SOUL.md lines that described the leading glyph / "red-dot" state so agent-facing docs match shipped behavior (ADR-0088 §6/§7 narrative intact).
+
+### Notes
+
+- Tooltip copy, click-through URL, provider scoping, polling cadence, and the `/analytics/statusline?provider=cursor` + `/health` data contract are all unchanged.
+- No marketplace re-screenshot required beyond a single fresh status-bar shot; public-site sync on getbudi.dev picks up the shape change in the usual way.
+
 ## 1.3.1 — user-visible extension copy cleanup
 
 _Tracked in `siropkin/budi-cursor#10` and `siropkin/budi-cursor#11`. Budi has no existing users, so cross-version narrative ("Starting with v1.1.0…", three stacked "What changed in 1.x" sections) and ADR/main-repo doc links on the marketplace README and welcome view were teaching a history the fresh installer never lived through and creating future broken-link liability._
