@@ -7,7 +7,6 @@ import {
   CURSOR_PROVIDER,
   deriveHealthState,
   formatCostLine,
-  healthIndicator,
   MIN_API_VERSION,
   resolveCosts,
   type DaemonHealth,
@@ -134,31 +133,38 @@ describe("deriveHealthState", () => {
 });
 
 describe("buildStatusText", () => {
-  it("prefixes the Claude Code cost shape with a green dot when healthy with traffic", () => {
+  it("renders the Claude Code cost shape with no leading glyph when healthy with traffic", () => {
     const text = buildStatusText("green", {
       cost_1d: 1,
       cost_7d: 5,
       cost_30d: 20,
     });
-    expect(text).toBe("\u{1F7E2} budi · $1.00 1d · $5.00 7d · $20.00 30d");
+    expect(text).toBe("budi · $1.00 1d · $5.00 7d · $20.00 30d");
   });
 
   it("shows offline copy when the daemon is unreachable", () => {
-    expect(buildStatusText("red", null)).toBe("\u{1F534} budi · offline");
+    expect(buildStatusText("red", null)).toBe("budi · offline");
   });
 
-  it("shows a hollow dot during startup", () => {
-    expect(buildStatusText("gray", null)).toBe("\u26AA budi");
+  it("shows the bare budi label during startup", () => {
+    expect(buildStatusText("gray", null)).toBe("budi");
   });
 
   it("shows a distinctive 'setup' statusline in firstRun mode (#314)", () => {
-    expect(buildStatusText("firstRun", null)).toBe("\u26AA budi · setup");
+    expect(buildStatusText("firstRun", null)).toBe("budi · setup");
   });
 
-  it("uses yellow when the daemon is reachable but no Cursor traffic yet", () => {
+  it("uses the plain budi prefix when the daemon is reachable but no Cursor traffic yet", () => {
     const text = buildStatusText("yellow", { cost_1d: 0, cost_7d: 0, cost_30d: 0 });
-    expect(text.startsWith("\u{1F7E1} budi · ")).toBe(true);
+    expect(text.startsWith("budi · ")).toBe(true);
     expect(text).toContain("$0.00 1d");
+  });
+
+  it("never emits a leading colored-circle glyph", () => {
+    const states = ["green", "yellow", "red", "gray", "firstRun"] as const;
+    for (const state of states) {
+      expect(buildStatusText(state, null)).not.toMatch(/[\u{1F7E2}\u{1F7E1}\u{1F534}⚪]/u);
+    }
   });
 });
 
@@ -193,16 +199,6 @@ describe("clickUrl (mirrors Claude Code click-through)", () => {
       statusline: null,
     });
     expect(url).toBe("https://app.getbudi.dev/dashboard");
-  });
-});
-
-describe("healthIndicator", () => {
-  it("maps each state to its brand dot", () => {
-    expect(healthIndicator("green")).toBe("\u{1F7E2}");
-    expect(healthIndicator("yellow")).toBe("\u{1F7E1}");
-    expect(healthIndicator("red")).toBe("\u{1F534}");
-    expect(healthIndicator("gray")).toBe("\u26AA");
-    expect(healthIndicator("firstRun")).toBe("\u26AA");
   });
 });
 

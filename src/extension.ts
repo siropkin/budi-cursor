@@ -56,7 +56,7 @@ export function activate(context: vscode.ExtensionContext): void {
   statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, -100);
   statusBarItem.name = "budi";
   statusBarItem.command = "budi.statusBarClick";
-  statusBarItem.text = "\u26AA budi";
+  statusBarItem.text = "budi";
   statusBarItem.tooltip = "budi — Cursor usage\n\nLoading...";
   statusBarItem.show();
   context.subscriptions.push(statusBarItem);
