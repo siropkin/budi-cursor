@@ -29,9 +29,16 @@ export interface InstallCommand {
   command: string;
 }
 
-export const MACOS_LINUX_COMMAND: InstallCommand = {
+export const MACOS_COMMAND: InstallCommand = {
+  platform: "macos",
+  label: "macOS",
+  shell: "bash",
+  command: "brew install siropkin/budi/budi",
+};
+
+export const LINUX_COMMAND: InstallCommand = {
   platform: "linux",
-  label: "macOS / Linux",
+  label: "Linux",
   shell: "bash",
   command:
     "curl -fsSL https://raw.githubusercontent.com/siropkin/budi/main/scripts/install-standalone.sh | bash",
@@ -48,14 +55,16 @@ export const WINDOWS_COMMAND: InstallCommand = {
 /**
  * Resolve the install command for the current host.
  *
- * The ticket explicitly asks for platform-specific copy; we fall back
- * to the macOS/Linux command on anything non-Windows because the Budi
- * Linux tarball supports the same path.
+ * macOS gets the Homebrew tap (`brew install siropkin/budi/budi`),
+ * which mirrors the canonical install path published on getbudi.dev
+ * and gives users `brew upgrade` as the update channel. Linux keeps
+ * the curl-based standalone installer since brew is not the typical
+ * Linux entry point. Windows uses the PowerShell installer.
  */
 export function installCommandForPlatform(platform: NodeJS.Platform): InstallCommand {
   if (platform === "win32") return WINDOWS_COMMAND;
-  if (platform === "darwin") return { ...MACOS_LINUX_COMMAND, platform: "macos" };
-  return MACOS_LINUX_COMMAND;
+  if (platform === "darwin") return MACOS_COMMAND;
+  return LINUX_COMMAND;
 }
 
 /** Command the welcome view offers after the daemon is detected — `budi init && budi doctor`. */
