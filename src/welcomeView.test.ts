@@ -11,14 +11,27 @@ vi.mock("vscode", () => ({
 }));
 
 import { renderHtml } from "./welcomeView";
-import { MACOS_LINUX_COMMAND, WINDOWS_COMMAND, INIT_HANDOFF_COMMAND } from "./installCommands";
+import {
+  INIT_HANDOFF_COMMAND,
+  LINUX_COMMAND,
+  MACOS_COMMAND,
+  WINDOWS_COMMAND,
+} from "./installCommands";
 
 describe("renderHtml (needs-install stage)", () => {
-  it("embeds the canonical macOS/Linux install command verbatim", () => {
+  it("embeds the canonical macOS brew install command verbatim", () => {
     const html = renderHtml("needs-install", "darwin");
-    expect(html).toContain(MACOS_LINUX_COMMAND.command);
+    expect(html).toContain(MACOS_COMMAND.command);
     // It must label the platform the user is on, not the other one.
-    expect(html).toContain("macOS / Linux");
+    expect(html).toContain("macOS");
+    expect(html).not.toContain(LINUX_COMMAND.command);
+  });
+
+  it("embeds the canonical Linux curl install command on linux", () => {
+    const html = renderHtml("needs-install", "linux");
+    expect(html).toContain(LINUX_COMMAND.command);
+    expect(html).toContain("Linux");
+    expect(html).not.toContain(MACOS_COMMAND.command);
   });
 
   it("embeds the canonical Windows install command when we're on win32", () => {
