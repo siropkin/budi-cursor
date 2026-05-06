@@ -247,7 +247,7 @@ function renderInitStage(initCommand: string): string {
   <button class="primary" onclick="send('runInit')">Finish setup in terminal</button>
 </div>
 
-<p class="footnote">Nothing is auto-executed. Review the prompts <code>budi init</code> shows before accepting. Once budi is running and routing Cursor traffic, this view closes automatically.</p>
+<p class="footnote">Nothing is auto-executed. Review the prompts <code>budi init</code> shows before accepting. Once budi is running and tailing Cursor's transcripts, this view closes automatically.</p>
 
 <script>
   const vscode = acquireVsCodeApi();
