@@ -3,6 +3,20 @@
 All notable changes to the `budi` Cursor extension are tracked here. The
 Cursor extension follows the main `siropkin/budi` release rhythm.
 
+## 1.3.3 — welcome-view copy alignment with getbudi.dev
+
+_Two small welcome-view fixes that landed after 1.3.2 (`siropkin/budi-cursor#20`, `siropkin/budi-cursor#21`). Both close gaps where the in-editor onboarding copy had drifted from the canonical install/contract story on getbudi.dev and the README._
+
+### Fixed
+
+- **macOS install command now uses Homebrew.** Split the previous combined `MACOS_LINUX_COMMAND` into a `brew install siropkin/budi/budi` command for `darwin` (labelled "macOS") and the curl-based standalone installer for Linux (labelled "Linux"). Restores the public-site mirror invariant that broke when getbudi.dev switched the macOS recommendation to Homebrew. Windows is unchanged.
+- **Welcome-view footnote no longer says budi "routes Cursor traffic."** Reworded the lone proxy-era straggler at `src/welcomeView.ts:250` to "tailing Cursor's transcripts" so it matches the README and the paragraph directly above it. Closes the last reference missed in the 1.3.0 proxy-era sweep (#9 → ADR-0089/0090).
+
+### Notes
+
+- No behaviour change beyond copy/install-command rendering; the daemon contract, statusline shape, and click-through URL composition are unchanged.
+- Tests in `installCommands.test.ts` and `welcomeView.test.ts` were extended to assert each platform gets its own canonical command and label, with cross-checks that the macOS panel never leaks the Linux command and vice versa.
+
 ## 1.3.2 — drop leading health-dot glyph from the status bar
 
 _Tracked in `siropkin/budi-cursor#18`. The colored circle prefix (🟢 / 🟡 / 🔴 / ⚪) was redundant — the tooltip and the copy already distinguish the three non-healthy states, and the glyph did not carry information the text lacked. Claude Code's CLI statusline does not show one either, so dropping it brings the Cursor surface in line with the reference surface._

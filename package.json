@@ -2,7 +2,7 @@
   "name": "budi",
   "displayName": "budi — AI Coding Cost Tracker",
   "description": "Quiet, provider-scoped Cursor status bar for budi. Works with budi — if you don't have budi installed yet, the extension will guide you through the install. Shows your Cursor spend over the last 1d / 7d / 30d, mirroring the Claude Code statusline.",
-  "version": "1.3.2",
+  "version": "1.3.3",
   "publisher": "siropkin",
   "license": "MIT",
   "icon": "assets/icon.png",
