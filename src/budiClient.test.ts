@@ -1,13 +1,16 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  buildProviderList,
   buildStatusText,
+  buildStatuslineUrl,
   buildTooltip,
   clickUrl,
   CURSOR_PROVIDER,
   deriveHealthState,
   detectHost,
   formatCostLine,
+  formatProviderName,
   MIN_API_VERSION,
   resolveCosts,
   type DaemonHealth,
@@ -242,8 +245,8 @@ describe("buildTooltip", () => {
 });
 
 describe("MIN_API_VERSION", () => {
-  it("is at least 1", () => {
-    expect(MIN_API_VERSION).toBeGreaterThanOrEqual(1);
+  it("is bumped to 3 in lockstep with budi-core 8.4.0 (siropkin/budi#665)", () => {
+    expect(MIN_API_VERSION).toBe(3);
   });
 });
 
@@ -277,6 +280,123 @@ describe("detectHost (siropkin/budi-cursor#26)", () => {
     expect(detectHost("")).toBe("unknown");
     expect(detectHost(undefined)).toBe("unknown");
     expect(detectHost(null)).toBe("unknown");
+  });
+});
+
+describe("buildProviderList (siropkin/budi-cursor#28)", () => {
+  it("always returns ['cursor'] on the cursor host, ignoring any probe results", () => {
+    expect(buildProviderList("cursor", [])).toEqual(["cursor"]);
+    expect(buildProviderList("cursor", ["copilot_chat"])).toEqual(["cursor"]);
+    expect(buildProviderList("cursor", ["copilot_chat", "continue"])).toEqual(["cursor"]);
+  });
+
+  it("falls back to copilot_chat on a vscode host with no detected providers", () => {
+    expect(buildProviderList("vscode", [])).toEqual(["copilot_chat"]);
+  });
+
+  it("falls back to copilot_chat on vscodium and unknown hosts when probe is empty", () => {
+    expect(buildProviderList("vscodium", [])).toEqual(["copilot_chat"]);
+    expect(buildProviderList("unknown", [])).toEqual(["copilot_chat"]);
+  });
+
+  it("returns probe results unchanged on a non-cursor host", () => {
+    expect(buildProviderList("vscode", ["copilot_chat"])).toEqual(["copilot_chat"]);
+    expect(buildProviderList("vscode", ["copilot_chat", "continue"])).toEqual([
+      "copilot_chat",
+      "continue",
+    ]);
+  });
+
+  it("passes deferred provider names through (daemon returns zero per #650)", () => {
+    expect(buildProviderList("vscode", ["continue", "cline", "roo_code"])).toEqual([
+      "continue",
+      "cline",
+      "roo_code",
+    ]);
+  });
+});
+
+describe("formatProviderName", () => {
+  it("renders canonical wire names with their human spellings", () => {
+    expect(formatProviderName("cursor")).toBe("Cursor");
+    expect(formatProviderName("copilot_chat")).toBe("Copilot Chat");
+    expect(formatProviderName("copilot_cli")).toBe("Copilot CLI");
+    expect(formatProviderName("claude_code")).toBe("Claude Code");
+    expect(formatProviderName("codex")).toBe("Codex");
+    expect(formatProviderName("continue")).toBe("Continue");
+    expect(formatProviderName("cline")).toBe("Cline");
+    expect(formatProviderName("roo_code")).toBe("Roo Code");
+  });
+
+  it("title-cases unknown names so deferred providers still render readably", () => {
+    expect(formatProviderName("aider")).toBe("Aider");
+    expect(formatProviderName("some_future_agent")).toBe("Some Future Agent");
+  });
+});
+
+describe("buildStatuslineUrl (siropkin/budi-cursor#28)", () => {
+  it("encodes a single provider as ?provider=<name> — byte-identical to v1.3.x on the cursor host", () => {
+    expect(buildStatuslineUrl("http://127.0.0.1:7878", ["cursor"])).toBe(
+      "http://127.0.0.1:7878/analytics/statusline?provider=cursor",
+    );
+  });
+
+  it("uses the comma-list form for multi-provider requests (axum's Query takes the last value of a repeated key, so repeated form is unsupported)", () => {
+    const url = buildStatuslineUrl("http://127.0.0.1:7878", ["copilot_chat", "continue"]);
+    // URLSearchParams percent-encodes the comma; the daemon parses both forms
+    // identically. Pin the encoded shape so a future URL library swap can't
+    // silently switch us to the unsupported repeated form.
+    expect(url).toBe("http://127.0.0.1:7878/analytics/statusline?provider=copilot_chat%2Ccontinue");
+    expect(url).not.toContain("provider=copilot_chat&provider=continue");
+  });
+
+  it("appends project_dir when passed", () => {
+    expect(buildStatuslineUrl("http://127.0.0.1:7878", ["cursor"], "/work/budi")).toBe(
+      "http://127.0.0.1:7878/analytics/statusline?provider=cursor&project_dir=%2Fwork%2Fbudi",
+    );
+  });
+
+  it("omits the provider query entirely when the list is empty (daemon defaults to all providers)", () => {
+    expect(buildStatuslineUrl("http://127.0.0.1:7878", [])).toBe(
+      "http://127.0.0.1:7878/analytics/statusline",
+    );
+  });
+});
+
+describe("buildTooltip with contributing_providers (siropkin/budi-cursor#28)", () => {
+  it("renders 'Tracking: ...' when the daemon returns a multi-provider response", () => {
+    const tip = buildTooltip(
+      "green",
+      {
+        cost_1d: 1,
+        cost_7d: 5,
+        cost_30d: 20,
+        contributing_providers: ["cursor", "copilot_chat"],
+      },
+      "https://app.getbudi.dev",
+      "vscode",
+    );
+    expect(tip).toContain("Tracking: Cursor, Copilot Chat");
+    expect(tip).not.toContain("Provider: cursor");
+  });
+
+  it("keeps the legacy 'Provider: cursor' line on a single-provider response", () => {
+    const tip = buildTooltip(
+      "green",
+      { cost_1d: 1, cost_7d: 5, cost_30d: 20 },
+      "https://app.getbudi.dev",
+    );
+    expect(tip).toContain("Provider: cursor");
+    expect(tip).not.toContain("Tracking:");
+  });
+
+  it("treats a single-entry contributing_providers list as single-provider (daemon should omit the field, but tolerate it)", () => {
+    const tip = buildTooltip(
+      "green",
+      { cost_1d: 1, cost_7d: 5, cost_30d: 20, contributing_providers: ["cursor"] },
+      "https://app.getbudi.dev",
+    );
+    expect(tip).not.toContain("Tracking:");
   });
 });
 
