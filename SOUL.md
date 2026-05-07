@@ -30,7 +30,8 @@ Marketplace publishing is driven from `.github/workflows/release.yml`; there is 
 
 ## Install (for users)
 
-- VS Code Marketplace: search for "budi"
+- VS Code Marketplace (VS Code): search for "budi"
+- Open VSX (Cursor / VSCodium): search for "budi" — Cursor's native extension panel resolves against Open VSX, not the VS Code Marketplace, so dual-publish is what makes the extension discoverable inside Cursor without a CLI hop. Release workflow publishes both targets in lockstep (`.github/workflows/release.yml`).
 - From CLI: `budi integrations install --with cursor-extension` (main repo drives this)
 - Manual: `cursor --install-extension cursor-budi.vsix --force`
 
