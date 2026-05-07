@@ -1,11 +1,13 @@
 import * as vscode from "vscode";
 import {
+  Host,
   HealthState,
   StatuslineData,
   buildStatusText,
   buildTooltip,
   clickUrl,
   deriveHealthState,
+  detectHost,
   fetchDaemonHealth,
   fetchStatusline,
   MIN_API_VERSION,
@@ -32,11 +34,15 @@ let apiVersionWarningShown = false;
 let daemonOfflineWarningLogged = false;
 let lastState: HealthState = "gray";
 let everSawDaemon = false;
+let host: Host = "cursor";
 
 export function activate(context: vscode.ExtensionContext): void {
   log = vscode.window.createOutputChannel("budi");
   context.subscriptions.push(log);
   log.appendLine(`[budi] activated at ${new Date().toISOString()}`);
+
+  host = detectHost(vscode.env.appName);
+  log.appendLine(`[budi] host detected: appName="${vscode.env.appName}" → ${host}`);
 
   everSawDaemon = context.globalState.get<boolean>(EVER_SAW_DAEMON_KEY, false);
 
@@ -71,14 +77,14 @@ export function activate(context: vscode.ExtensionContext): void {
         openWelcome(context, "needs-install", daemonUrl, cloudEndpoint);
         return;
       }
-      const url = clickUrl({ cloudEndpoint, statusline: cachedStatusline });
+      const url = clickUrl({ cloudEndpoint, statusline: cachedStatusline, host });
       void vscode.env.openExternal(vscode.Uri.parse(url));
     }),
   );
 
   context.subscriptions.push(
     vscode.commands.registerCommand("budi.openDashboard", () => {
-      const url = clickUrl({ cloudEndpoint, statusline: cachedStatusline });
+      const url = clickUrl({ cloudEndpoint, statusline: cachedStatusline, host });
       void vscode.env.openExternal(vscode.Uri.parse(url));
     }),
   );
@@ -208,8 +214,8 @@ async function refreshData(
 
   const state = deriveHealthState(health, statusline, everSawDaemon);
   lastState = state;
-  statusBarItem.text = buildStatusText(state, statusline);
-  statusBarItem.tooltip = buildTooltip(state, statusline, cloudEndpoint);
+  statusBarItem.text = buildStatusText(state, statusline, host);
+  statusBarItem.tooltip = buildTooltip(state, statusline, cloudEndpoint, host);
 
   if (state === "red") {
     if (!daemonOfflineWarningLogged) {

@@ -6,6 +6,7 @@ import {
   clickUrl,
   CURSOR_PROVIDER,
   deriveHealthState,
+  detectHost,
   formatCostLine,
   MIN_API_VERSION,
   resolveCosts,
@@ -243,5 +244,81 @@ describe("buildTooltip", () => {
 describe("MIN_API_VERSION", () => {
   it("is at least 1", () => {
     expect(MIN_API_VERSION).toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe("detectHost (siropkin/budi-cursor#26)", () => {
+  it("maps Cursor's appName to the cursor host", () => {
+    expect(detectHost("Cursor")).toBe("cursor");
+  });
+
+  it("maps VS Code stable to the vscode host", () => {
+    expect(detectHost("Visual Studio Code")).toBe("vscode");
+  });
+
+  it("maps VS Code Insiders to the vscode host", () => {
+    expect(detectHost("Visual Studio Code - Insiders")).toBe("vscode");
+  });
+
+  it("maps VS Code Exploration builds to the vscode host", () => {
+    expect(detectHost("Visual Studio Code - Exploration")).toBe("vscode");
+  });
+
+  it("maps VSCodium to the vscodium host", () => {
+    expect(detectHost("VSCodium")).toBe("vscodium");
+  });
+
+  it("maps VSCodium Insiders to the vscodium host", () => {
+    expect(detectHost("VSCodium - Insiders")).toBe("vscodium");
+  });
+
+  it("falls back to unknown for unrecognized appName values", () => {
+    expect(detectHost("Some Future Fork")).toBe("unknown");
+    expect(detectHost("")).toBe("unknown");
+    expect(detectHost(undefined)).toBe("unknown");
+    expect(detectHost(null)).toBe("unknown");
+  });
+});
+
+describe("host plumbing (regression: cursor host output is byte-for-byte unchanged)", () => {
+  // Acceptance criterion from siropkin/budi-cursor#26: threading the
+  // host enum through the builders must not change a single byte of
+  // the output a Cursor user sees today. Host-aware copy variants
+  // land in #29.
+  it("buildStatusText('green', …, 'cursor') matches the no-host call", () => {
+    const data = { cost_1d: 1, cost_7d: 5, cost_30d: 20 };
+    expect(buildStatusText("green", data, "cursor")).toBe(buildStatusText("green", data));
+    expect(buildStatusText("green", data, "cursor")).toBe(
+      "budi · $1.00 1d · $5.00 7d · $20.00 30d",
+    );
+  });
+
+  it("buildStatusText renders the same shape on a vscode host (no fake offline)", () => {
+    // VS Code host + zero traffic must still render the cost shape, not
+    // an "offline" string — that's what makes the v1.4 install useful
+    // for VS Code users without Cursor data.
+    const text = buildStatusText("yellow", { cost_1d: 0, cost_7d: 0, cost_30d: 0 }, "vscode");
+    expect(text).toBe("budi · $0.00 1d · $0.00 7d · $0.00 30d");
+  });
+
+  it("buildStatusText('firstRun', …) shows setup on every host", () => {
+    for (const h of ["cursor", "vscode", "vscodium", "unknown"] as const) {
+      expect(buildStatusText("firstRun", null, h)).toBe("budi · setup");
+    }
+  });
+
+  it("buildTooltip on cursor host matches the no-host call", () => {
+    const data = { cost_1d: 1, cost_7d: 5, cost_30d: 20 };
+    expect(buildTooltip("green", data, "https://app.getbudi.dev", "cursor")).toBe(
+      buildTooltip("green", data, "https://app.getbudi.dev"),
+    );
+  });
+
+  it("clickUrl on cursor host matches the no-host call", () => {
+    const opts = {
+      cloudEndpoint: "https://app.getbudi.dev",
+      statusline: { active_provider: CURSOR_PROVIDER, cost_1d: 0.1 },
+    };
+    expect(clickUrl({ ...opts, host: "cursor" })).toBe(clickUrl(opts));
   });
 });
