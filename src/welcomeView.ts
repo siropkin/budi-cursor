@@ -1,6 +1,11 @@
 import * as vscode from "vscode";
 
 import {
+  defaultProviderForHost,
+  formatProviderName,
+  type Host,
+} from "./budiClient";
+import {
   InstallCommand,
   initHandoffCommandFor,
   installCommandForPlatform,
@@ -33,10 +38,17 @@ export type WelcomeStage = "needs-install" | "needs-init";
 export interface WelcomeViewDeps {
   /** Optional recheck hook. Called when the user clicks "I already installed it". */
   onRecheck?: () => Promise<void> | void;
+  /**
+   * Editor host the extension is running inside. Drives host-aware copy
+   * in the welcome view (siropkin/budi-cursor#29). Defaults to `cursor`
+   * so the v1.3.x copy is preserved when callers do not pass it.
+   */
+  host?: Host;
 }
 
 let currentPanel: vscode.WebviewPanel | undefined;
 let currentOnRecheck: WelcomeViewDeps["onRecheck"];
+let currentHost: Host = "cursor";
 
 /**
  * Open (or reveal) the welcome view at the given stage. The view is a
@@ -49,10 +61,11 @@ export function showWelcome(
   options: WelcomeViewDeps = {},
 ): vscode.WebviewPanel {
   currentOnRecheck = options.onRecheck;
+  currentHost = options.host ?? "cursor";
 
   if (currentPanel) {
     currentPanel.reveal(vscode.ViewColumn.Active);
-    currentPanel.webview.html = renderHtml(stage, process.platform);
+    currentPanel.webview.html = renderHtml(stage, process.platform, currentHost);
     return currentPanel;
   }
 
@@ -66,7 +79,7 @@ export function showWelcome(
     },
   );
 
-  panel.webview.html = renderHtml(stage, process.platform);
+  panel.webview.html = renderHtml(stage, process.platform, currentHost);
 
   recordCounterEvent("welcome_view_impression");
 
@@ -108,7 +121,7 @@ export function showWelcome(
 /** Advance the welcome view from "install budi" to "run `budi init`". */
 export function transitionTo(stage: WelcomeStage): void {
   if (!currentPanel) return;
-  currentPanel.webview.html = renderHtml(stage, process.platform);
+  currentPanel.webview.html = renderHtml(stage, process.platform, currentHost);
   currentPanel.reveal(vscode.ViewColumn.Active);
 }
 
@@ -149,12 +162,20 @@ function runInitInTerminal(platform: NodeJS.Platform): void {
  * assert the install command text is present verbatim — it is a
  * security-sensitive string and must not drift from
  * `installCommands.ts` silently.
+ *
+ * `host` defaults to `cursor` so legacy callers and existing tests get
+ * v1.3.x copy unchanged; non-Cursor hosts pick up host-aware language
+ * (siropkin/budi-cursor#29).
  */
-export function renderHtml(stage: WelcomeStage, platform: NodeJS.Platform): string {
+export function renderHtml(
+  stage: WelcomeStage,
+  platform: NodeJS.Platform,
+  host: Host = "cursor",
+): string {
   const install = installCommandForPlatform(platform);
   const initCommand = initHandoffCommandFor(platform);
   if (stage === "needs-install") {
-    return renderInstallStage(install);
+    return renderInstallStage(install, host);
   }
   return renderInitStage(initCommand);
 }
@@ -168,8 +189,12 @@ function esc(input: string): string {
     .replace(/'/g, "&#39;");
 }
 
-function renderInstallStage(cmd: InstallCommand): string {
+function renderInstallStage(cmd: InstallCommand, host: Host): string {
   const installBlock = esc(cmd.command);
+  // Cursor host: keep the v1.3.x literal. Non-Cursor hosts: use the
+  // host's first-class provider name so a fresh VS Code user reads
+  // "Copilot Chat spend" rather than "Cursor spend".
+  const spendLabel = host === "cursor" ? "Cursor" : formatProviderName(defaultProviderForHost(host));
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -194,7 +219,7 @@ function renderInstallStage(cmd: InstallCommand): string {
 </head>
 <body>
 <h1><span class="dot" aria-hidden="true"></span> Welcome to budi</h1>
-<p class="muted">Shows your Cursor spend over the last 1d / 7d / 30d in the status bar, privately, on your machine.</p>
+<p class="muted">Shows your ${esc(spendLabel)} spend over the last 1d / 7d / 30d in the status bar, privately, on your machine.</p>
 
 <p>To start tracking, budi needs a small background daemon on this computer. That's one command — your prompts and code never leave your machine.</p>
 
@@ -206,7 +231,7 @@ function renderInstallStage(cmd: InstallCommand): string {
   <button class="secondary" onclick="send('recheck')">I already installed it</button>
 </div>
 
-<p class="footnote">The command is pre-filled in Cursor's integrated terminal — read it before pressing enter.</p>
+<p class="footnote">The command is pre-filled in the integrated terminal — read it before pressing enter.</p>
 
 <script>
   const vscode = acquireVsCodeApi();
@@ -247,7 +272,7 @@ function renderInitStage(initCommand: string): string {
   <button class="primary" onclick="send('runInit')">Finish setup in terminal</button>
 </div>
 
-<p class="footnote">Nothing is auto-executed. Review the prompts <code>budi init</code> shows before accepting. Once budi is running and tailing Cursor's transcripts, this view closes automatically.</p>
+<p class="footnote">Nothing is auto-executed. Review the prompts <code>budi init</code> shows before accepting. Once budi is running and tailing your editor's transcripts, this view closes automatically.</p>
 
 <script>
   const vscode = acquireVsCodeApi();
