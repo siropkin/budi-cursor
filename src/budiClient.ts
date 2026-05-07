@@ -55,14 +55,23 @@ export interface ResolvedCosts {
 }
 
 /**
- * The minimum daemon api_version this extension requires. Bumped in
- * lockstep with budi-core 8.4.0 (siropkin/budi#665) so older daemons
- * surface the existing API-version warning rather than silently
- * returning the wrong shape — host-scoped multi-provider responses
- * (#650) and the v3 Copilot Chat parser envelopes both ride on
- * api_version 3.
+ * The minimum daemon `/health.api_version` this extension requires.
+ *
+ * The wire shape this extension actually depends on — host-scoped
+ * `?provider=a,b,c` requests + `contributing_providers` responses
+ * (siropkin/budi#650) — landed in budi-core 8.4.0 *without* a bump to
+ * the daemon's `API_VERSION` constant (`crates/budi-daemon/src/routes/
+ * hooks.rs`), which is still `1`. v1.4.0 of this extension shipped with
+ * `MIN_API_VERSION = 3` based on a comment that incorrectly cited
+ * siropkin/budi#665 as the bump (that PR is a Copilot Chat parser fix,
+ * unrelated). Net effect: every released daemon failed the gate and
+ * the status bar showed `budi · offline`. Lowered back to `1` here per
+ * siropkin/budi-cursor#40.
+ *
+ * Bump this only when budi-core actually bumps `API_VERSION` for a
+ * breaking wire change — and update both sides in the same release.
  */
-export const MIN_API_VERSION = 3;
+export const MIN_API_VERSION = 1;
 
 /** The Cursor provider name on the budi-core wire — ADR-0088 §7. */
 export const CURSOR_PROVIDER = "cursor";
