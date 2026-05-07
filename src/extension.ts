@@ -13,6 +13,7 @@ import {
   MIN_API_VERSION,
   resolveCosts,
 } from "./budiClient";
+import { startExtensionsProbe } from "./extensionsProbe";
 import { clearActiveWorkspace, writeActiveWorkspace } from "./sessionStore";
 import {
   hideWelcome,
@@ -43,6 +44,15 @@ export function activate(context: vscode.ExtensionContext): void {
 
   host = detectHost(vscode.env.appName);
   log.appendLine(`[budi] host detected: appName="${vscode.env.appName}" → ${host}`);
+
+  const initialProviders = startExtensionsProbe(context, {
+    host,
+    log,
+    onChange: (providers) => {
+      log.appendLine(`[budi] AI extension list changed → providers=[${providers.join(", ")}]`);
+    },
+  });
+  log.appendLine(`[budi] initial providers=[${initialProviders.join(", ")}]`);
 
   everSawDaemon = context.globalState.get<boolean>(EVER_SAW_DAEMON_KEY, false);
 
