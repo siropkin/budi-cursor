@@ -6,6 +6,7 @@ import {
   buildProviderList,
   buildStatusText,
   buildTooltip,
+  buildTooltipHeader,
   clickUrl,
   deriveHealthState,
   detectHost,
@@ -74,7 +75,7 @@ export function activate(context: vscode.ExtensionContext): void {
   statusBarItem.name = "budi";
   statusBarItem.command = "budi.statusBarClick";
   statusBarItem.text = "budi";
-  statusBarItem.tooltip = "budi — Cursor usage\n\nLoading...";
+  statusBarItem.tooltip = `${buildTooltipHeader(host, initialProviders)}\n\nLoading...`;
   statusBarItem.show();
   context.subscriptions.push(statusBarItem);
 
@@ -287,6 +288,7 @@ function openWelcome(
   cloudEndpoint: string,
 ): void {
   showWelcome(context, stage, {
+    host,
     onRecheck: async () => {
       log.appendLine("[budi] welcome-view recheck triggered");
       // A single eager poll; the normal loop keeps going underneath.

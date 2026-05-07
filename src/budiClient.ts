@@ -82,6 +82,29 @@ const DEFAULT_PROVIDER_BY_HOST: Readonly<Record<Host, string>> = {
   unknown: "copilot_chat",
 };
 
+/** Wire name of the first-class provider for a host (siropkin/budi-cursor#29). */
+export function defaultProviderForHost(host: Host): string {
+  return DEFAULT_PROVIDER_BY_HOST[host];
+}
+
+/**
+ * Human-facing host label used in marketplace-visible copy
+ * (status bar tooltip header, welcome view) — siropkin/budi-cursor#29.
+ *
+ * `unknown` hosts fall back to "Editor" so the tooltip does not pretend
+ * to recognize a fork it has not been taught.
+ */
+const HOST_LABELS: Readonly<Record<Host, string>> = {
+  cursor: "Cursor",
+  vscode: "VS Code",
+  vscodium: "VSCodium",
+  unknown: "Editor",
+};
+
+export function formatHostLabel(host: Host): string {
+  return HOST_LABELS[host];
+}
+
 /**
  * Compose the provider list this extension sends to the daemon.
  *
@@ -287,11 +310,23 @@ export function clickUrl({ cloudEndpoint, statusline, host = "cursor" }: ClickUr
 }
 
 /**
+ * First line of the tooltip — names the host and, on non-Cursor hosts,
+ * the single contributing provider when one is known. Multiple
+ * contributing providers fall through to a host-only label so the
+ * dedicated `Tracking: ...` line below carries the detail.
+ */
+export function buildTooltipHeader(host: Host, contributing: readonly string[]): string {
+  const hostLabel = formatHostLabel(host);
+  if (host === "cursor") return `budi — ${hostLabel} usage`;
+  if (contributing.length === 1) {
+    return `budi — ${hostLabel} usage (${formatProviderName(contributing[0])})`;
+  }
+  return `budi — ${hostLabel} usage`;
+}
+
+/**
  * Build a status bar tooltip that names the provider scope, names the
  * rolling windows, and points the user at `budi doctor` on trouble.
- *
- * `host` is accepted but not yet branched on; host-aware tooltip copy
- * lands in siropkin/budi-cursor#29.
  */
 export function buildTooltip(
   state: HealthState,
@@ -299,8 +334,8 @@ export function buildTooltip(
   cloudEndpoint: string,
   host: Host = "cursor",
 ): string {
-  void host;
-  const lines: string[] = ["budi — Cursor usage", ""];
+  const contributing = statusline?.contributing_providers ?? [];
+  const lines: string[] = [buildTooltipHeader(host, contributing), ""];
   if (state === "firstRun") {
     lines.push("budi is not installed on this machine yet.");
     lines.push("Click to set it up in one step.");
@@ -318,14 +353,26 @@ export function buildTooltip(
   lines.push(`7d  ${formatCost(costs.cost7d)}`);
   lines.push(`30d ${formatCost(costs.cost30d)}`);
   lines.push("");
-  const contributing = statusline?.contributing_providers ?? [];
   if (contributing.length > 1) {
     lines.push(`Tracking: ${contributing.map(formatProviderName).join(", ")}`);
-  } else {
+  } else if (host === "cursor") {
+    // Preserve the v1.3.x literal (lowercase wire name) on the Cursor host.
     lines.push("Provider: cursor");
+  } else {
+    const single =
+      statusline?.provider_scope ?? statusline?.active_provider ?? defaultProviderForHost(host);
+    lines.push(`Provider: ${formatProviderName(single)}`);
   }
   if (state === "yellow") {
-    lines.push("No recent Cursor traffic in the last 24h.");
+    if (host === "cursor") {
+      lines.push("No recent Cursor traffic in the last 24h.");
+    } else {
+      const scope =
+        contributing.length === 1
+          ? formatProviderName(contributing[0])
+          : `${formatHostLabel(host)} AI`;
+      lines.push(`No recent ${scope} traffic in the last 24h.`);
+    }
   }
   lines.push("");
   const base = cloudEndpoint.replace(/\/+$/, "");
@@ -340,8 +387,11 @@ export function buildTooltip(
  * (`budi`, `budi · setup`, `budi · offline`) and the welcome-view
  * lifecycle, not a visual indicator.
  *
- * `host` is accepted but not yet branched on; host-aware status copy
- * lands in siropkin/budi-cursor#29.
+ * `host` is accepted but does not change the cost-line shape: the
+ * shared status contract guarantees the daemon already filters costs to
+ * the requested provider scope, so the on-bar copy stays byte-identical
+ * across hosts. Host-aware copy in #29 lives in `buildTooltip`, which
+ * has room for the longer label.
  */
 export function buildStatusText(
   state: HealthState,

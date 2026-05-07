@@ -5,11 +5,14 @@ import {
   buildStatusText,
   buildStatuslineUrl,
   buildTooltip,
+  buildTooltipHeader,
   clickUrl,
   CURSOR_PROVIDER,
+  defaultProviderForHost,
   deriveHealthState,
   detectHost,
   formatCostLine,
+  formatHostLabel,
   formatProviderName,
   MIN_API_VERSION,
   resolveCosts,
@@ -397,6 +400,116 @@ describe("buildTooltip with contributing_providers (siropkin/budi-cursor#28)", (
       "https://app.getbudi.dev",
     );
     expect(tip).not.toContain("Tracking:");
+  });
+});
+
+describe("formatHostLabel + defaultProviderForHost (siropkin/budi-cursor#29)", () => {
+  it("renders human-facing host labels for marketplace copy", () => {
+    expect(formatHostLabel("cursor")).toBe("Cursor");
+    expect(formatHostLabel("vscode")).toBe("VS Code");
+    expect(formatHostLabel("vscodium")).toBe("VSCodium");
+    expect(formatHostLabel("unknown")).toBe("Editor");
+  });
+
+  it("exposes the first-class provider per host", () => {
+    expect(defaultProviderForHost("cursor")).toBe("cursor");
+    expect(defaultProviderForHost("vscode")).toBe("copilot_chat");
+    expect(defaultProviderForHost("vscodium")).toBe("copilot_chat");
+    expect(defaultProviderForHost("unknown")).toBe("copilot_chat");
+  });
+});
+
+describe("buildTooltipHeader (siropkin/budi-cursor#29)", () => {
+  it("keeps the v1.3.x literal on the cursor host regardless of providers", () => {
+    expect(buildTooltipHeader("cursor", [])).toBe("budi — Cursor usage");
+    expect(buildTooltipHeader("cursor", ["cursor"])).toBe("budi — Cursor usage");
+    // Even a misconfigured Cursor host with extra providers in the list
+    // must not change the header — the request shape is locked to
+    // ["cursor"] anyway (#28).
+    expect(buildTooltipHeader("cursor", ["cursor", "copilot_chat"])).toBe("budi — Cursor usage");
+  });
+
+  it("names the single contributing provider parenthetically on a vscode host", () => {
+    expect(buildTooltipHeader("vscode", ["copilot_chat"])).toBe(
+      "budi — VS Code usage (Copilot Chat)",
+    );
+  });
+
+  it("falls back to host-only label when multiple providers are contributing (Tracking line carries the detail)", () => {
+    expect(buildTooltipHeader("vscode", ["copilot_chat", "continue"])).toBe("budi — VS Code usage");
+  });
+
+  it("renders host-only label when no contributing providers were echoed", () => {
+    expect(buildTooltipHeader("vscode", [])).toBe("budi — VS Code usage");
+    expect(buildTooltipHeader("vscodium", [])).toBe("budi — VSCodium usage");
+    expect(buildTooltipHeader("unknown", [])).toBe("budi — Editor usage");
+  });
+});
+
+describe("buildTooltip on non-cursor hosts (siropkin/budi-cursor#29)", () => {
+  it("renders the host-aware header with single contributing provider", () => {
+    const tip = buildTooltip(
+      "green",
+      {
+        cost_1d: 1,
+        cost_7d: 5,
+        cost_30d: 20,
+        contributing_providers: ["copilot_chat"],
+      },
+      "https://app.getbudi.dev",
+      "vscode",
+    );
+    expect(tip.startsWith("budi — VS Code usage (Copilot Chat)")).toBe(true);
+  });
+
+  it("formats the Provider: line with the human provider name on vscode (no orphan 'cursor')", () => {
+    const tip = buildTooltip(
+      "green",
+      { cost_1d: 1, cost_7d: 5, cost_30d: 20, provider_scope: "copilot_chat" },
+      "https://app.getbudi.dev",
+      "vscode",
+    );
+    expect(tip).toContain("Provider: Copilot Chat");
+    expect(tip).not.toContain("Provider: cursor");
+  });
+
+  it("falls back to the host's first-class provider when neither provider_scope nor active_provider is set", () => {
+    const tip = buildTooltip(
+      "green",
+      { cost_1d: 1, cost_7d: 5, cost_30d: 20 },
+      "https://app.getbudi.dev",
+      "vscode",
+    );
+    expect(tip).toContain("Provider: Copilot Chat");
+  });
+
+  it("rewords the no-traffic nudge for non-cursor hosts", () => {
+    const single = buildTooltip(
+      "yellow",
+      {
+        cost_1d: 0,
+        cost_7d: 0,
+        cost_30d: 0,
+        contributing_providers: ["copilot_chat"],
+      },
+      "https://app.getbudi.dev",
+      "vscode",
+    );
+    expect(single).toContain("No recent Copilot Chat traffic in the last 24h.");
+    expect(single).not.toContain("No recent Cursor traffic");
+
+    const multi = buildTooltip(
+      "yellow",
+      {
+        cost_1d: 0,
+        cost_7d: 0,
+        cost_30d: 0,
+        contributing_providers: ["copilot_chat", "continue"],
+      },
+      "https://app.getbudi.dev",
+      "vscode",
+    );
+    expect(multi).toContain("No recent VS Code AI traffic in the last 24h.");
   });
 });
 
