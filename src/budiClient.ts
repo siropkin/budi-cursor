@@ -45,6 +45,44 @@ export const MIN_API_VERSION = 1;
 /** The provider filter this extension always sends — ADR-0088 §7. */
 export const CURSOR_PROVIDER = "cursor";
 
+/**
+ * Editor host this extension is running inside, derived from
+ * `vscode.env.appName` at activation. Used to pick the default provider
+ * scope and to drive host-aware copy in `buildStatusText` /
+ * `buildTooltip` (siropkin/budi-cursor#26 — lockstep with budi-core
+ * 8.4.0).
+ *
+ * - `cursor`   — Cursor (the original target host).
+ * - `vscode`   — VS Code stable or Insiders.
+ * - `vscodium` — VSCodium (open-source VS Code build).
+ * - `unknown`  — appName matched none of the above; treat like `vscode`
+ *                for default-provider purposes but keep the label honest
+ *                so the welcome view / tooltip can flag it.
+ */
+export type Host = "cursor" | "vscode" | "vscodium" | "unknown";
+
+/**
+ * Map `vscode.env.appName` to a `Host` enum. Mappings are pinned to the
+ * exact strings VS Code, VS Code Insiders, Cursor, and VSCodium ship in
+ * `product.json`; anything else (forks, future Microsoft channels) falls
+ * through to `unknown` so the caller can decide.
+ */
+export function detectHost(appName: string | undefined | null): Host {
+  switch (appName) {
+    case "Cursor":
+      return "cursor";
+    case "Visual Studio Code":
+    case "Visual Studio Code - Insiders":
+    case "Visual Studio Code - Exploration":
+      return "vscode";
+    case "VSCodium":
+    case "VSCodium - Insiders":
+      return "vscodium";
+    default:
+      return "unknown";
+  }
+}
+
 function formatCost(dollars: number): string {
   if (!Number.isFinite(dollars) || dollars < 0) return "$0.00";
   if (dollars >= 1000) return `$${(dollars / 1000).toFixed(1)}K`;
@@ -127,6 +165,12 @@ export function deriveHealthState(
 interface ClickUrlOptions {
   cloudEndpoint: string;
   statusline: StatuslineData | null;
+  /**
+   * Editor host this extension is rendering inside. Threaded through for
+   * future host-aware click destinations (siropkin/budi-cursor#29); today
+   * every host opens the same Claude Code-shaped URL.
+   */
+  host?: Host;
 }
 
 /**
@@ -140,7 +184,8 @@ interface ClickUrlOptions {
  * status bar command switches to the in-editor welcome view instead of
  * calling this helper.
  */
-export function clickUrl({ cloudEndpoint, statusline }: ClickUrlOptions): string {
+export function clickUrl({ cloudEndpoint, statusline, host = "cursor" }: ClickUrlOptions): string {
+  void host;
   const base = cloudEndpoint.replace(/\/+$/, "");
   if (statusline && statusline.active_provider === CURSOR_PROVIDER) {
     return `${base}/dashboard/sessions`;
@@ -151,12 +196,17 @@ export function clickUrl({ cloudEndpoint, statusline }: ClickUrlOptions): string
 /**
  * Build a status bar tooltip that names the provider scope, names the
  * rolling windows, and points the user at `budi doctor` on trouble.
+ *
+ * `host` is accepted but not yet branched on; host-aware tooltip copy
+ * lands in siropkin/budi-cursor#29.
  */
 export function buildTooltip(
   state: HealthState,
   statusline: StatuslineData | null,
   cloudEndpoint: string,
+  host: Host = "cursor",
 ): string {
+  void host;
   const lines: string[] = ["budi — Cursor usage", ""];
   if (state === "firstRun") {
     lines.push("budi is not installed on this machine yet.");
@@ -191,8 +241,16 @@ export function buildTooltip(
  * leading health glyph — the `HealthState` drives the copy variants
  * (`budi`, `budi · setup`, `budi · offline`) and the welcome-view
  * lifecycle, not a visual indicator.
+ *
+ * `host` is accepted but not yet branched on; host-aware status copy
+ * lands in siropkin/budi-cursor#29.
  */
-export function buildStatusText(state: HealthState, statusline: StatuslineData | null): string {
+export function buildStatusText(
+  state: HealthState,
+  statusline: StatuslineData | null,
+  host: Host = "cursor",
+): string {
+  void host;
   if (state === "firstRun") return "budi · setup";
   if (state === "red") return "budi · offline";
   if (state === "gray") return "budi";
