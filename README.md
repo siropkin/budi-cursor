@@ -42,7 +42,12 @@ You can re-open the welcome view at any time with **Cmd+Shift+P → Budi: Show W
 
 ## Install
 
-The extension can be installed during `budi init` and later with:
+Search for **"budi"** in your editor's extension panel:
+
+- **VS Code** — installs from the VS Code Marketplace.
+- **Cursor / VSCodium** — installs from Open VSX, which their extension panel uses by default.
+
+Or install via the budi CLI:
 
 ```bash
 budi integrations install --with cursor-extension
