@@ -3,6 +3,20 @@
 All notable changes to the `budi` Cursor extension are tracked here. The
 Cursor extension follows the main `siropkin/budi` release rhythm.
 
+## 1.4.1 — fix `budi · offline` against released daemons
+
+_Hotfix on top of 1.4.0 (`siropkin/budi-cursor#40`). The 1.4.0 release bumped `MIN_API_VERSION` to `3` based on a comment that incorrectly claimed lockstep with budi-core 8.4.0 / `siropkin/budi#665`. The daemon's `API_VERSION` constant (`crates/budi-daemon/src/routes/hooks.rs`) was never bumped past `1` — and `siropkin/budi#665` is a Copilot Chat parser fix, unrelated to the wire version. Net effect: every released daemon (8.4.0, 8.4.1, …) failed the gate, so the status bar showed `budi · offline` even when the daemon was perfectly healthy._
+
+### Fixed
+
+- **`MIN_API_VERSION` lowered from `3` back to `1`** in `src/budiClient.ts` to match what every released daemon actually advertises. The wire shape this extension depends on (`?provider=a,b,c` requests + `contributing_providers` responses from `siropkin/budi#650`) lands correctly under `api_version: 1`, so the gate was effectively a permanent false-alarm. Comment block above the constant rewritten to remove the bogus `#665` / "v3 Copilot Chat parser envelopes" claims.
+- The api-version warning toast (`src/extension.ts`) and the `red` health-state branch in `deriveHealthState` are unchanged — the tripwire is preserved for real wire breaks, just not pre-tripped.
+
+### Notes
+
+- After installing 1.4.1, reload the editor window. With a running 8.4.x daemon the status bar should flip from `budi · offline` to `budi · $X 1d · $Y 7d · $Z 30d`.
+- Follow-up worth filing separately: split the `red` health state into `unreachable` vs `version-stale` so the on-bar copy stops saying "offline" when the real story is a future version mismatch.
+
 ## 1.4.0 — VS Code host support alongside Cursor
 
 _Closes the milestone tracked in `siropkin/budi-cursor#25` and lands in lockstep with budi-core 8.4.0 (`siropkin/budi#647`). Before this release the extension ran in VS Code but always asked budi-core for `?provider=cursor`, so a pure-VS Code user saw zero forever. v1.4.0 makes the extension genuinely multi-host: it detects the editor it is running in, enumerates installed AI extensions, and asks budi-core for a contributing-providers list rather than a hardcoded single provider._

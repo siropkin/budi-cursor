@@ -248,8 +248,8 @@ describe("buildTooltip", () => {
 });
 
 describe("MIN_API_VERSION", () => {
-  it("is bumped to 3 in lockstep with budi-core 8.4.0 (siropkin/budi#665)", () => {
-    expect(MIN_API_VERSION).toBe(3);
+  it("matches the daemon's current API_VERSION (siropkin/budi-cursor#40)", () => {
+    expect(MIN_API_VERSION).toBe(1);
   });
 });
 
