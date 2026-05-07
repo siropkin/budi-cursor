@@ -3,9 +3,9 @@
 All notable changes to the `budi` Cursor extension are tracked here. The
 Cursor extension follows the main `siropkin/budi` release rhythm.
 
-## 1.5.0 — VS Code host support alongside Cursor
+## 1.4.0 — VS Code host support alongside Cursor
 
-_Closes the milestone-1.4 work tracked in `siropkin/budi-cursor#25` and lands in lockstep with budi-core 8.4.0 (`siropkin/budi#647`). Before this release the extension ran in VS Code but always asked budi-core for `?provider=cursor`, so a pure-VS Code user saw zero forever. v1.5.0 makes the extension genuinely multi-host: it detects the editor it is running in, enumerates installed AI extensions, and asks budi-core for a contributing-providers list rather than a hardcoded single provider._
+_Closes the milestone tracked in `siropkin/budi-cursor#25` and lands in lockstep with budi-core 8.4.0 (`siropkin/budi#647`). Before this release the extension ran in VS Code but always asked budi-core for `?provider=cursor`, so a pure-VS Code user saw zero forever. v1.4.0 makes the extension genuinely multi-host: it detects the editor it is running in, enumerates installed AI extensions, and asks budi-core for a contributing-providers list rather than a hardcoded single provider._
 
 ### Added
 
@@ -19,7 +19,7 @@ _Closes the milestone-1.4 work tracked in `siropkin/budi-cursor#25` and lands in
 - **Host-aware status bar text and tooltip** (`siropkin/budi-cursor#29` / PR #36). The label reads "Cursor usage" or "VS Code usage" based on detected host, and the tooltip lists the contributing providers (Cursor, Copilot Chat, …) so users can see which AI tools are folded into the dollar number.
 - **Welcome-view copy** dropped Cursor-only language ("Cursor's integrated terminal" → "the integrated terminal", and so on) so the in-editor onboarding reads naturally for both editors (`siropkin/budi-cursor#29`).
 - **README + `package.json` description** reframed for both editors (`siropkin/budi-cursor#31` / PR #38). Marketplace listing now reads "VS Code & Cursor extension" with both providers in the description; keywords gained `vscode`, `copilot`, `copilot chat`.
-- **GitHub repo metadata** refreshed post-release (`siropkin/budi-cursor#32`): description, homepage (`https://app.getbudi.dev`), and topics (`copilot`, `ai`, `developer-tools` added) now reflect post-1.5.0 reality.
+- **GitHub repo metadata** refreshed post-release (`siropkin/budi-cursor#32`): description, homepage (`https://app.getbudi.dev`), and topics (`copilot`, `ai`, `developer-tools` added) now reflect post-1.4.0 reality.
 
 ### Notes
 

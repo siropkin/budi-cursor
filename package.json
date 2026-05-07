@@ -2,7 +2,7 @@
   "name": "budi",
   "displayName": "budi — AI Coding Cost Tracker",
   "description": "VS Code / Cursor status bar for budi. Shows your Cursor and Copilot Chat spend over the last 1d / 7d / 30d, mirroring the Claude Code statusline. If you don't have budi installed yet, the extension will guide you through the install.",
-  "version": "1.5.0",
+  "version": "1.4.0",
   "publisher": "siropkin",
   "license": "MIT",
   "icon": "assets/icon.png",
