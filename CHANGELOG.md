@@ -3,6 +3,30 @@
 All notable changes to the `budi` Cursor extension are tracked here. The
 Cursor extension follows the main `siropkin/budi` release rhythm.
 
+## 1.4.0 — VS Code host support alongside Cursor
+
+_Closes the milestone tracked in `siropkin/budi-cursor#25` and lands in lockstep with budi-core 8.4.0 (`siropkin/budi#647`). Before this release the extension ran in VS Code but always asked budi-core for `?provider=cursor`, so a pure-VS Code user saw zero forever. v1.4.0 makes the extension genuinely multi-host: it detects the editor it is running in, enumerates installed AI extensions, and asks budi-core for a contributing-providers list rather than a hardcoded single provider._
+
+### Added
+
+- **Host detection** via `vscode.env.appName` (`siropkin/budi-cursor#26` / PR #33). The extension now distinguishes Cursor from VS Code at activation and uses that to pick the default provider when no AI extensions are installed.
+- **Installed-extensions probe** that enumerates `vscode.extensions.all` for `github.copilot-chat`, `Continue.continue`, `saoudrizwan.claude-dev`, etc. (`siropkin/budi-cursor#27` / PR #34). Discovered extensions are emitted in the request to budi-core so future provider rollouts on the daemon side need no extension change.
+- **Multi-provider request shape** replacing the hardcoded `?provider=cursor` query string (`siropkin/budi-cursor#28` / PR #35). `MIN_API_VERSION` bumped to `3` so older daemons surface the existing version-mismatch warning instead of silently returning zeros.
+- **Open VSX publish target** (`siropkin/budi-cursor#30` / PR #37). The extension is now reachable from inside Cursor's native extension panel via the Open VSX registry, not only the manual `.vsix` install path. README install section documents the Open VSX route for Cursor / VSCodium users.
+
+### Changed
+
+- **Host-aware status bar text and tooltip** (`siropkin/budi-cursor#29` / PR #36). The label reads "Cursor usage" or "VS Code usage" based on detected host, and the tooltip lists the contributing providers (Cursor, Copilot Chat, …) so users can see which AI tools are folded into the dollar number.
+- **Welcome-view copy** dropped Cursor-only language ("Cursor's integrated terminal" → "the integrated terminal", and so on) so the in-editor onboarding reads naturally for both editors (`siropkin/budi-cursor#29`).
+- **README + `package.json` description** reframed for both editors (`siropkin/budi-cursor#31` / PR #38). Marketplace listing now reads "VS Code & Cursor extension" with both providers in the description; keywords gained `vscode`, `copilot`, `copilot chat`.
+- **GitHub repo metadata** refreshed post-release (`siropkin/budi-cursor#32`): description, homepage (`https://app.getbudi.dev`), and topics (`copilot`, `ai`, `developer-tools` added) now reflect post-1.4.0 reality.
+
+### Notes
+
+- Cursor behaviour is unchanged: a Cursor-only install with no other AI extensions still resolves to `provider=cursor` via the host-default fallback.
+- Copilot Chat numbers depend on budi-core 8.4.0 (`siropkin/budi#651`); on older daemons the API-version warning fires and the statusline degrades gracefully rather than misreporting.
+- JetBrains support, Continue / Cline / Roo Code provider data, and the `budi-cursor` → `budi-vscode` repo rename are explicitly out of scope and tracked separately.
+
 ## 1.3.3 — welcome-view copy alignment with getbudi.dev
 
 _Two small welcome-view fixes that landed after 1.3.2 (`siropkin/budi-cursor#20`, `siropkin/budi-cursor#21`). Both close gaps where the in-editor onboarding copy had drifted from the canonical install/contract story on getbudi.dev and the README._
