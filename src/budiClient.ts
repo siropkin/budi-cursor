@@ -1,14 +1,17 @@
 import * as http from "http";
 
 /**
- * Provider-scoped status contract consumed by this extension.
+ * Status contract consumed by this extension.
  *
  * Authoritative spec: `docs/statusline-contract.md` in `siropkin/budi`
- * (shipped in 8.1 under siropkin/budi#224, governed by ADR-0088 §4).
+ * (shipped in 8.1 under siropkin/budi#224, host-scoped multi-provider
+ * shape added in 8.4 under siropkin/budi#650, governed by ADR-0088 §4 +
+ * §7 post-#648).
  *
- * The extension always queries with `provider=cursor` so every numeric
- * field reflects Cursor usage only — never blended multi-provider totals
- * (ADR-0088 §7, siropkin/budi#232).
+ * The extension queries either provider-scoped (one provider) or
+ * host-scoped (comma-list of providers detected in the current editor
+ * host). Single-provider behavior on the Cursor host is byte-identical
+ * to v1.3.x (siropkin/budi-cursor#28).
  */
 export interface StatuslineData {
   /** Rolling last 24h, dollars. */
@@ -19,6 +22,18 @@ export interface StatuslineData {
   cost_30d?: number;
   /** Most recent provider seen inside the 1d window, after the provider filter. */
   active_provider?: string;
+  /**
+   * Echoed back by the daemon only when exactly one provider was passed.
+   * Multi-provider responses omit this field — `contributing_providers`
+   * advertises the active scope instead.
+   */
+  provider_scope?: string;
+  /**
+   * Present only on multi-provider responses (the comma-list form).
+   * Deduplicated, normalized, in input order. Tooltip + click-through
+   * routing source for host-scoped surfaces.
+   */
+  contributing_providers?: string[];
   // Deprecated 8.0 aliases. The daemon still populates these with the same
   // rolling values for one release; removed in 9.0. Kept here so this
   // extension still renders something useful against a pre-#224 daemon.
@@ -39,11 +54,89 @@ export interface ResolvedCosts {
   cost30d: number;
 }
 
-/** The minimum daemon api_version this extension requires. */
-export const MIN_API_VERSION = 1;
+/**
+ * The minimum daemon api_version this extension requires. Bumped in
+ * lockstep with budi-core 8.4.0 (siropkin/budi#665) so older daemons
+ * surface the existing API-version warning rather than silently
+ * returning the wrong shape — host-scoped multi-provider responses
+ * (#650) and the v3 Copilot Chat parser envelopes both ride on
+ * api_version 3.
+ */
+export const MIN_API_VERSION = 3;
 
-/** The provider filter this extension always sends — ADR-0088 §7. */
+/** The Cursor provider name on the budi-core wire — ADR-0088 §7. */
 export const CURSOR_PROVIDER = "cursor";
+
+/**
+ * First-class provider for each editor host. Used as the fallback when
+ * the installed-extensions probe finds nothing on a non-Cursor host —
+ * a fresh VS Code install with no AI extension yet still gets a
+ * sensible statusline scope. `copilot_chat` is the only non-Cursor
+ * provider with a parser in budi-core 8.4.0; later releases may pick a
+ * different default per host (siropkin/budi#295).
+ */
+const DEFAULT_PROVIDER_BY_HOST: Readonly<Record<Host, string>> = {
+  cursor: "cursor",
+  vscode: "copilot_chat",
+  vscodium: "copilot_chat",
+  unknown: "copilot_chat",
+};
+
+/**
+ * Compose the provider list this extension sends to the daemon.
+ *
+ * - Cursor host: always `["cursor"]`. The probe is intentionally
+ *   ignored so a stray `github.copilot-chat` install on Cursor cannot
+ *   change the request shape — the v1.3.x byte-for-byte contract holds.
+ * - Non-Cursor host with detected providers: returns the probe results
+ *   as-is. Unknown providers (deferred ones from #295) survive — the
+ *   daemon returns zero for them per #650 so over-reporting is safe.
+ * - Non-Cursor host with empty probe: falls back to that host's first-
+ *   class provider so the statusline has a definite scope rather than
+ *   collapsing to the daemon's "all providers" default.
+ */
+export function buildProviderList(
+  host: Host,
+  detectedProviders: readonly string[],
+): readonly string[] {
+  if (host === "cursor") return ["cursor"];
+  if (detectedProviders.length === 0) return [DEFAULT_PROVIDER_BY_HOST[host]];
+  return detectedProviders;
+}
+
+/**
+ * Pretty-print a provider name for tooltip rendering. Matches the
+ * canonical wire names from the statusline contract (`cursor`,
+ * `copilot_chat`, `claude_code`, `codex`, `copilot_cli`, `continue`,
+ * `cline`, `roo_code`); unknown names round-trip through a generic
+ * underscore-to-space title-case so deferred providers (#295) still
+ * render readably.
+ */
+export function formatProviderName(provider: string): string {
+  switch (provider) {
+    case "cursor":
+      return "Cursor";
+    case "copilot_chat":
+      return "Copilot Chat";
+    case "copilot_cli":
+      return "Copilot CLI";
+    case "claude_code":
+      return "Claude Code";
+    case "codex":
+      return "Codex";
+    case "continue":
+      return "Continue";
+    case "cline":
+      return "Cline";
+    case "roo_code":
+      return "Roo Code";
+    default:
+      return provider
+        .split("_")
+        .map((part) => (part.length > 0 ? part[0].toUpperCase() + part.slice(1) : part))
+        .join(" ");
+  }
+}
 
 /**
  * Editor host this extension is running inside, derived from
@@ -225,7 +318,12 @@ export function buildTooltip(
   lines.push(`7d  ${formatCost(costs.cost7d)}`);
   lines.push(`30d ${formatCost(costs.cost30d)}`);
   lines.push("");
-  lines.push("Provider: cursor");
+  const contributing = statusline?.contributing_providers ?? [];
+  if (contributing.length > 1) {
+    lines.push(`Tracking: ${contributing.map(formatProviderName).join(", ")}`);
+  } else {
+    lines.push("Provider: cursor");
+  }
   if (state === "yellow") {
     lines.push("No recent Cursor traffic in the last 24h.");
   }
@@ -286,36 +384,55 @@ export function fetchDaemonHealth(daemonUrl: string): Promise<DaemonHealth | nul
 }
 
 /**
- * Fetch provider-scoped statusline data from the daemon. The extension
- * always scopes to `provider=cursor` — see ADR-0088 §7.
+ * Fetch statusline data from the daemon. `providers` is the list built
+ * by `buildProviderList`; a single entry is encoded as plain
+ * `?provider=<name>` (byte-identical to v1.3.x for the Cursor host),
+ * and multiple entries are joined with `,` per the contract — the
+ * repeated `?provider=a&provider=b` form is **not** supported by the
+ * daemon (axum's `Query` extractor takes the last value only).
  *
  * `project_dir` is optional. When passed it unlocks `project_cost`
  * (unused on the statusline surface today) and gives the daemon the
  * repo-local context it needs for accurate branch attribution.
  */
+export function buildStatuslineUrl(
+  daemonUrl: string,
+  providers: readonly string[],
+  projectDir?: string,
+): string {
+  const url = new URL("/analytics/statusline", daemonUrl);
+  if (providers.length > 0) {
+    url.searchParams.set("provider", providers.join(","));
+  }
+  if (projectDir) {
+    url.searchParams.set("project_dir", projectDir);
+  }
+  return url.toString();
+}
+
 export function fetchStatusline(
   daemonUrl: string,
+  providers: readonly string[],
   projectDir?: string,
 ): Promise<StatuslineData | null> {
   return new Promise((resolve) => {
-    const url = new URL("/analytics/statusline", daemonUrl);
-    url.searchParams.set("provider", CURSOR_PROVIDER);
-    if (projectDir) {
-      url.searchParams.set("project_dir", projectDir);
-    }
-    const req = http.get(url.toString(), { timeout: 3000 }, (res) => {
-      let body = "";
-      res.on("data", (chunk: Buffer) => {
-        body += chunk.toString();
-      });
-      res.on("end", () => {
-        try {
-          resolve(JSON.parse(body));
-        } catch {
-          resolve(null);
-        }
-      });
-    });
+    const req = http.get(
+      buildStatuslineUrl(daemonUrl, providers, projectDir),
+      { timeout: 3000 },
+      (res) => {
+        let body = "";
+        res.on("data", (chunk: Buffer) => {
+          body += chunk.toString();
+        });
+        res.on("end", () => {
+          try {
+            resolve(JSON.parse(body));
+          } catch {
+            resolve(null);
+          }
+        });
+      },
+    );
     req.on("error", () => resolve(null));
     req.on("timeout", () => {
       req.destroy();

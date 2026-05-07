@@ -3,6 +3,7 @@ import {
   Host,
   HealthState,
   StatuslineData,
+  buildProviderList,
   buildStatusText,
   buildTooltip,
   clickUrl,
@@ -13,7 +14,7 @@ import {
   MIN_API_VERSION,
   resolveCosts,
 } from "./budiClient";
-import { startExtensionsProbe } from "./extensionsProbe";
+import { getDetectedProviders, startExtensionsProbe } from "./extensionsProbe";
 import { clearActiveWorkspace, writeActiveWorkspace } from "./sessionStore";
 import {
   hideWelcome,
@@ -210,9 +211,10 @@ async function refreshData(
   const cwd = folders?.[0]?.uri.fsPath;
   if (cwd) writeActiveWorkspace(cwd);
 
+  const providers = buildProviderList(host, getDetectedProviders());
   const [health, statusline] = await Promise.all([
     fetchDaemonHealth(daemonUrl),
-    fetchStatusline(daemonUrl, cwd),
+    fetchStatusline(daemonUrl, providers, cwd),
   ]);
   cachedStatusline = statusline;
 
