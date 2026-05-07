@@ -359,7 +359,8 @@ export function buildTooltip(
     // Preserve the v1.3.x literal (lowercase wire name) on the Cursor host.
     lines.push("Provider: cursor");
   } else {
-    const single = statusline?.provider_scope ?? statusline?.active_provider ?? defaultProviderForHost(host);
+    const single =
+      statusline?.provider_scope ?? statusline?.active_provider ?? defaultProviderForHost(host);
     lines.push(`Provider: ${formatProviderName(single)}`);
   }
   if (state === "yellow") {

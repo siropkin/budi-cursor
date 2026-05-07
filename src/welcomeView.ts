@@ -1,10 +1,6 @@
 import * as vscode from "vscode";
 
-import {
-  defaultProviderForHost,
-  formatProviderName,
-  type Host,
-} from "./budiClient";
+import { defaultProviderForHost, formatProviderName, type Host } from "./budiClient";
 import {
   InstallCommand,
   initHandoffCommandFor,
@@ -194,7 +190,8 @@ function renderInstallStage(cmd: InstallCommand, host: Host): string {
   // Cursor host: keep the v1.3.x literal. Non-Cursor hosts: use the
   // host's first-class provider name so a fresh VS Code user reads
   // "Copilot Chat spend" rather than "Cursor spend".
-  const spendLabel = host === "cursor" ? "Cursor" : formatProviderName(defaultProviderForHost(host));
+  const spendLabel =
+    host === "cursor" ? "Cursor" : formatProviderName(defaultProviderForHost(host));
   return `<!DOCTYPE html>
 <html lang="en">
 <head>

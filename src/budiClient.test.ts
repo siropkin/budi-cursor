@@ -436,9 +436,7 @@ describe("buildTooltipHeader (siropkin/budi-cursor#29)", () => {
   });
 
   it("falls back to host-only label when multiple providers are contributing (Tracking line carries the detail)", () => {
-    expect(buildTooltipHeader("vscode", ["copilot_chat", "continue"])).toBe(
-      "budi — VS Code usage",
-    );
+    expect(buildTooltipHeader("vscode", ["copilot_chat", "continue"])).toBe("budi — VS Code usage");
   });
 
   it("renders host-only label when no contributing providers were echoed", () => {
