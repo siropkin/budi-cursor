@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import {
+  DEFAULT_CLOUD_ENDPOINT,
   DEFAULT_DAEMON_URL,
   Host,
   HealthState,
@@ -13,6 +14,7 @@ import {
   detectHost,
   fetchDaemonHealth,
   fetchStatusline,
+  isAllowedCloudEndpoint,
   isLoopbackDaemonUrl,
   MIN_API_VERSION,
   resolveCosts,
@@ -62,7 +64,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
   const settings = vscode.workspace.getConfiguration("budi");
   let daemonUrl: string = readDaemonUrl(settings);
-  let cloudEndpoint: string = settings.get("cloudEndpoint", "https://app.getbudi.dev");
+  let cloudEndpoint: string = readCloudEndpoint(settings);
   let dataPollInterval: number = settings.get("pollingIntervalMs", 15000);
 
   const folders = vscode.workspace.workspaceFolders;
@@ -122,7 +124,7 @@ export function activate(context: vscode.ExtensionContext): void {
       if (!e.affectsConfiguration("budi")) return;
       const updated = vscode.workspace.getConfiguration("budi");
       daemonUrl = readDaemonUrl(updated);
-      cloudEndpoint = updated.get("cloudEndpoint", "https://app.getbudi.dev");
+      cloudEndpoint = readCloudEndpoint(updated);
       dataPollInterval = updated.get("pollingIntervalMs", 15000);
       restartDataPoll(daemonUrl, cloudEndpoint, dataPollInterval, context);
       requestRefresh(daemonUrl, cloudEndpoint, context);
@@ -146,6 +148,22 @@ function readDaemonUrl(settings: vscode.WorkspaceConfiguration): string {
     `[budi] ignoring non-loopback daemonUrl=${JSON.stringify(raw)} — daemon must run on 127.0.0.1, localhost, or ::1. Falling back to ${DEFAULT_DAEMON_URL}.`,
   );
   return DEFAULT_DAEMON_URL;
+}
+
+// Refuse off-domain `cloudEndpoint` overrides (siropkin/budi-cursor#43).
+// The status-bar click hands `${cloudEndpoint}/dashboard[...]` straight
+// to `vscode.env.openExternal`, so a workspace override pointing at
+// `app.getbudi.dev.attacker.example` would be a one-click phishing
+// primitive. The cloud only ever lives on getbudi.dev (SOUL.md §"Repos
+// in this constellation"); anything else is treated as malicious and
+// the default is used instead.
+function readCloudEndpoint(settings: vscode.WorkspaceConfiguration): string {
+  const raw = settings.get<string>("cloudEndpoint", DEFAULT_CLOUD_ENDPOINT);
+  if (isAllowedCloudEndpoint(raw)) return raw;
+  log.appendLine(
+    `[budi] ignoring off-domain cloudEndpoint=${JSON.stringify(raw)} — cloud endpoint must be an https URL on getbudi.dev. Falling back to ${DEFAULT_CLOUD_ENDPOINT}.`,
+  );
+  return DEFAULT_CLOUD_ENDPOINT;
 }
 
 export function deactivate(): void {

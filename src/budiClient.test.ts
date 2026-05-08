@@ -8,6 +8,7 @@ import {
   buildTooltipHeader,
   clickUrl,
   CURSOR_PROVIDER,
+  DEFAULT_CLOUD_ENDPOINT,
   DEFAULT_DAEMON_URL,
   defaultProviderForHost,
   deriveHealthState,
@@ -15,6 +16,7 @@ import {
   formatCostLine,
   formatHostLabel,
   formatProviderName,
+  isAllowedCloudEndpoint,
   isLoopbackDaemonUrl,
   MIN_API_VERSION,
   resolveCosts,
@@ -610,5 +612,60 @@ describe("isLoopbackDaemonUrl (siropkin/budi-cursor#42)", () => {
     expect(isLoopbackDaemonUrl("")).toBe(false);
     expect(isLoopbackDaemonUrl("not a url")).toBe(false);
     expect(isLoopbackDaemonUrl("127.0.0.1:7878")).toBe(false);
+  });
+});
+
+describe("isAllowedCloudEndpoint (siropkin/budi-cursor#43)", () => {
+  it("accepts the documented default", () => {
+    expect(isAllowedCloudEndpoint(DEFAULT_CLOUD_ENDPOINT)).toBe(true);
+  });
+
+  it("accepts the apex and known subdomains", () => {
+    const accepted = [
+      "https://getbudi.dev",
+      "https://app.getbudi.dev",
+      "https://app.getbudi.dev/",
+      "https://staging.app.getbudi.dev",
+      "https://staging.getbudi.dev/dashboard",
+      "https://APP.GETBUDI.DEV",
+    ];
+    for (const url of accepted) {
+      expect(isAllowedCloudEndpoint(url), url).toBe(true);
+    }
+  });
+
+  it("rejects look-alike phishing hosts", () => {
+    const rejected = [
+      // Suffix-extension trick from the issue's reproduction.
+      "https://app.getbudi.dev.attacker.example",
+      "https://app.getbudi.dev.attacker.example/dashboard",
+      // Bare lookalike domains.
+      "https://getbudi.dev.attacker.example",
+      "https://getbudidev.example",
+      // Wrong apex.
+      "https://app.getbudi.com",
+      "https://app.budi.dev",
+      // Userinfo trick: hostname is `app.getbudi.dev`, but a render that
+      // shows the full URL leaks `attacker.example` to the user.
+      "https://attacker.example@app.getbudi.dev",
+      // Substring match attempt.
+      "https://notgetbudi.dev",
+    ];
+    for (const url of rejected) {
+      expect(isAllowedCloudEndpoint(url), url).toBe(false);
+    }
+  });
+
+  it("rejects non-https schemes", () => {
+    expect(isAllowedCloudEndpoint("http://app.getbudi.dev")).toBe(false);
+    expect(isAllowedCloudEndpoint("file:///etc/passwd")).toBe(false);
+    expect(isAllowedCloudEndpoint("javascript:alert(1)")).toBe(false);
+    expect(isAllowedCloudEndpoint("ftp://app.getbudi.dev")).toBe(false);
+  });
+
+  it("rejects unparseable input", () => {
+    expect(isAllowedCloudEndpoint("")).toBe(false);
+    expect(isAllowedCloudEndpoint("not a url")).toBe(false);
+    expect(isAllowedCloudEndpoint("app.getbudi.dev")).toBe(false);
   });
 });

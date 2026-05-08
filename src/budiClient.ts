@@ -450,6 +450,48 @@ export function isLoopbackDaemonUrl(url: string): boolean {
 }
 
 /**
+ * The default cloud endpoint — must stay in sync with `package.json`'s
+ * `budi.cloudEndpoint` default and with `SOUL.md`'s "cloud lives at
+ * app.getbudi.dev" pin.
+ */
+export const DEFAULT_CLOUD_ENDPOINT = "https://app.getbudi.dev";
+
+/**
+ * Apex domain the cloud dashboard is served from. Workspace-scoped
+ * `cloudEndpoint` overrides outside this suffix are rejected so a
+ * malicious repo cannot redirect the status-bar click to a phishing
+ * page (siropkin/budi-cursor#43).
+ */
+const CLOUD_HOST_ROOT = "getbudi.dev";
+
+/**
+ * True iff `url` is an `https` URL on `getbudi.dev` (or any subdomain
+ * of it) with no userinfo. The status-bar click hands `${url}/dashboard`
+ * to `vscode.env.openExternal`, so a remote/attacker host would be a
+ * one-click phishing primitive — same threat model as
+ * `isLoopbackDaemonUrl` for #42, but with the cloud allowlist instead
+ * of loopback (siropkin/budi-cursor#43). Subdomains are allowed so
+ * staging endpoints (e.g. `staging.app.getbudi.dev`) keep working
+ * when set as a user-scope override.
+ */
+export function isAllowedCloudEndpoint(url: string): boolean {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return false;
+  }
+  if (parsed.protocol !== "https:") return false;
+  // Reject userinfo — `https://attacker@app.getbudi.dev` is harmless on
+  // a spec-compliant client (the navigator strips the credential), but
+  // some surfaces render the userinfo as a hostname-shaped prefix in
+  // confirm dialogs, which is enough rope for a phishing screenshot.
+  if (parsed.username !== "" || parsed.password !== "") return false;
+  const host = parsed.hostname.toLowerCase();
+  return host === CLOUD_HOST_ROOT || host.endsWith(`.${CLOUD_HOST_ROOT}`);
+}
+
+/**
  * Check daemon health and return version / api_version info.
  * Returns null if the daemon is unreachable.
  */
