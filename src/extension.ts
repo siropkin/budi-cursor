@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import {
+  DEFAULT_DAEMON_URL,
   Host,
   HealthState,
   StatuslineData,
@@ -12,6 +13,7 @@ import {
   detectHost,
   fetchDaemonHealth,
   fetchStatusline,
+  isLoopbackDaemonUrl,
   MIN_API_VERSION,
   resolveCosts,
 } from "./budiClient";
@@ -59,7 +61,7 @@ export function activate(context: vscode.ExtensionContext): void {
   everSawDaemon = context.globalState.get<boolean>(EVER_SAW_DAEMON_KEY, false);
 
   const settings = vscode.workspace.getConfiguration("budi");
-  let daemonUrl: string = settings.get("daemonUrl", "http://127.0.0.1:7878");
+  let daemonUrl: string = readDaemonUrl(settings);
   let cloudEndpoint: string = settings.get("cloudEndpoint", "https://app.getbudi.dev");
   let dataPollInterval: number = settings.get("pollingIntervalMs", 15000);
 
@@ -119,7 +121,7 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.workspace.onDidChangeConfiguration((e) => {
       if (!e.affectsConfiguration("budi")) return;
       const updated = vscode.workspace.getConfiguration("budi");
-      daemonUrl = updated.get("daemonUrl", "http://127.0.0.1:7878");
+      daemonUrl = readDaemonUrl(updated);
       cloudEndpoint = updated.get("cloudEndpoint", "https://app.getbudi.dev");
       dataPollInterval = updated.get("pollingIntervalMs", 15000);
       restartDataPoll(daemonUrl, cloudEndpoint, dataPollInterval, context);
@@ -130,6 +132,20 @@ export function activate(context: vscode.ExtensionContext): void {
   void checkApiVersionOnce(daemonUrl);
   requestRefresh(daemonUrl, cloudEndpoint, context);
   startDataPoll(daemonUrl, cloudEndpoint, dataPollInterval, context);
+}
+
+// Refuse non-loopback `daemonUrl` overrides (siropkin/budi-cursor#42).
+// `getConfiguration("budi").get` returns the merged user/workspace
+// value, so a malicious repo's `.vscode/settings.json` would otherwise
+// redirect daemon polling — including the absolute workspace path — to
+// an attacker host. Loopback is the only legitimate target per SOUL.md.
+function readDaemonUrl(settings: vscode.WorkspaceConfiguration): string {
+  const raw = settings.get<string>("daemonUrl", DEFAULT_DAEMON_URL);
+  if (isLoopbackDaemonUrl(raw)) return raw;
+  log.appendLine(
+    `[budi] ignoring non-loopback daemonUrl=${JSON.stringify(raw)} — daemon must run on 127.0.0.1, localhost, or ::1. Falling back to ${DEFAULT_DAEMON_URL}.`,
+  );
+  return DEFAULT_DAEMON_URL;
 }
 
 export function deactivate(): void {
