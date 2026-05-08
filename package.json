@@ -74,6 +74,11 @@
           "pattern": "^https://([a-z0-9-]+\\.)*getbudi\\.dev(:\\d+)?(/.*)?$",
           "patternErrorMessage": "budi.cloudEndpoint must be an https URL on getbudi.dev (or a subdomain). Off-domain values are ignored at runtime to prevent phishing.",
           "description": "Cloud dashboard URL opened when the status bar item is clicked. Must be an https URL on getbudi.dev — off-domain overrides are ignored. Matches the Claude Code statusline click-through."
+        },
+        "budi.includeOtherSurfaces": {
+          "type": "boolean",
+          "default": false,
+          "description": "By default, the status bar only shows activity from this IDE (Cursor in Cursor, VS Code in VS Code). Set to true to aggregate spend across every editor on this machine, like v1.4.x did."
         }
       }
     }

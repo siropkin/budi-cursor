@@ -25,6 +25,7 @@ import {
   isLoopbackDaemonUrl,
   MIN_API_VERSION,
   resolveCosts,
+  surfaceFilterForHost,
   type DaemonHealth,
   type StatuslineData,
 } from "./budiClient";
@@ -372,6 +373,68 @@ describe("buildStatuslineUrl (siropkin/budi-cursor#28)", () => {
     expect(buildStatuslineUrl("http://127.0.0.1:7878", [])).toBe(
       "http://127.0.0.1:7878/analytics/statusline",
     );
+  });
+
+  it("appends a single surface as ?surface=<name>", () => {
+    expect(buildStatuslineUrl("http://127.0.0.1:7878", ["cursor"], undefined, ["cursor"])).toBe(
+      "http://127.0.0.1:7878/analytics/statusline?provider=cursor&surface=cursor",
+    );
+  });
+
+  it("uses the comma-list form for multiple surfaces, just like providers", () => {
+    const url = buildStatuslineUrl("http://127.0.0.1:7878", ["copilot_chat"], undefined, [
+      "vscode",
+      "jetbrains",
+    ]);
+    expect(url).toBe(
+      "http://127.0.0.1:7878/analytics/statusline?provider=copilot_chat&surface=vscode%2Cjetbrains",
+    );
+    expect(url).not.toContain("surface=vscode&surface=jetbrains");
+  });
+
+  it("omits the surface query entirely when the list is empty (failsafe and includeOtherSurfaces opt-out)", () => {
+    expect(buildStatuslineUrl("http://127.0.0.1:7878", ["cursor"], undefined, [])).toBe(
+      "http://127.0.0.1:7878/analytics/statusline?provider=cursor",
+    );
+  });
+
+  it("places surface after project_dir so the wire shape stays predictable", () => {
+    expect(buildStatuslineUrl("http://127.0.0.1:7878", ["cursor"], "/work/budi", ["cursor"])).toBe(
+      "http://127.0.0.1:7878/analytics/statusline?provider=cursor&project_dir=%2Fwork%2Fbudi&surface=cursor",
+    );
+  });
+
+  it("omits surface by default — single-host v1.4.x calls remain byte-identical against an old daemon", () => {
+    // No `surfaces` arg at all: buildStatuslineUrl produces exactly the
+    // same URL as before #50 landed. Old daemons that don't know about
+    // `?surface=` therefore see the unchanged request shape.
+    expect(buildStatuslineUrl("http://127.0.0.1:7878", ["cursor"], "/work/budi")).toBe(
+      "http://127.0.0.1:7878/analytics/statusline?provider=cursor&project_dir=%2Fwork%2Fbudi",
+    );
+  });
+});
+
+describe("surfaceFilterForHost (siropkin/budi-cursor#50)", () => {
+  it("maps cursor host to ['cursor']", () => {
+    expect(surfaceFilterForHost("cursor", false)).toEqual(["cursor"]);
+  });
+
+  it("maps vscode host to ['vscode']", () => {
+    expect(surfaceFilterForHost("vscode", false)).toEqual(["vscode"]);
+  });
+
+  it("maps vscodium to vscode (VSCodium reuses VS Code paths in core's path-based inference)", () => {
+    expect(surfaceFilterForHost("vscodium", false)).toEqual(["vscode"]);
+  });
+
+  it("returns no filter on unknown hosts (failsafe — don't hide the user's data)", () => {
+    expect(surfaceFilterForHost("unknown", false)).toEqual([]);
+  });
+
+  it("returns no filter on every host when includeOtherSurfaces is true", () => {
+    for (const h of ["cursor", "vscode", "vscodium", "unknown"] as const) {
+      expect(surfaceFilterForHost(h, true)).toEqual([]);
+    }
   });
 });
 
