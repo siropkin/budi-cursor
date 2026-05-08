@@ -3,25 +3,20 @@ import {
   DaemonHealth,
   DEFAULT_CLOUD_ENDPOINT,
   DEFAULT_DAEMON_URL,
-  Host,
   HealthState,
   StatuslineData,
-  buildProviderList,
   buildStatusText,
   buildTooltip,
   buildTooltipHeader,
   clickUrl,
   deriveHealthState,
-  detectHost,
   fetchDaemonHealth,
   fetchStatusline,
   isAllowedCloudEndpoint,
   isLoopbackDaemonUrl,
   MIN_API_VERSION,
   resolveCosts,
-  surfaceFilterForHost,
 } from "./budiClient";
-import { getDetectedProviders, startExtensionsProbe } from "./extensionsProbe";
 import { upgradeCommandForPlatform } from "./installCommands";
 import { clearActiveWorkspace, writeActiveWorkspace } from "./sessionStore";
 import {
@@ -45,8 +40,6 @@ let apiVersionWarningShown = false;
 let daemonOfflineWarningLogged = false;
 let lastState: HealthState = "gray";
 let everSawDaemon = false;
-let host: Host = "cursor";
-let includeOtherSurfaces = false;
 let suppressUpdatePrompt = false;
 
 export function activate(context: vscode.ExtensionContext): void {
@@ -54,25 +47,12 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(log);
   log.appendLine(`[budi] activated at ${new Date().toISOString()}`);
 
-  host = detectHost(vscode.env.appName);
-  log.appendLine(`[budi] host detected: appName="${vscode.env.appName}" → ${host}`);
-
-  const initialProviders = startExtensionsProbe(context, {
-    host,
-    log,
-    onChange: (providers) => {
-      log.appendLine(`[budi] AI extension list changed → providers=[${providers.join(", ")}]`);
-    },
-  });
-  log.appendLine(`[budi] initial providers=[${initialProviders.join(", ")}]`);
-
   everSawDaemon = context.globalState.get<boolean>(EVER_SAW_DAEMON_KEY, false);
 
   const settings = vscode.workspace.getConfiguration("budi");
   let daemonUrl: string = readDaemonUrl(settings);
   let cloudEndpoint: string = readCloudEndpoint(settings);
   let dataPollInterval: number = readPollingInterval(settings);
-  includeOtherSurfaces = readIncludeOtherSurfaces(settings);
   suppressUpdatePrompt = readSuppressUpdatePrompt(settings);
 
   const folders = vscode.workspace.workspaceFolders;
@@ -87,7 +67,7 @@ export function activate(context: vscode.ExtensionContext): void {
   statusBarItem.name = "budi";
   statusBarItem.command = "budi.statusBarClick";
   statusBarItem.text = "budi";
-  statusBarItem.tooltip = `${buildTooltipHeader(host, initialProviders)}\n\nLoading...`;
+  statusBarItem.tooltip = `${buildTooltipHeader([])}\n\nLoading...`;
   statusBarItem.show();
   context.subscriptions.push(statusBarItem);
 
@@ -101,14 +81,14 @@ export function activate(context: vscode.ExtensionContext): void {
         openWelcome(context, "needs-install", daemonUrl, cloudEndpoint);
         return;
       }
-      const url = clickUrl({ cloudEndpoint, statusline: cachedStatusline, host });
+      const url = clickUrl({ cloudEndpoint, statusline: cachedStatusline });
       void vscode.env.openExternal(vscode.Uri.parse(url));
     }),
   );
 
   context.subscriptions.push(
     vscode.commands.registerCommand("budi.openDashboard", () => {
-      const url = clickUrl({ cloudEndpoint, statusline: cachedStatusline, host });
+      const url = clickUrl({ cloudEndpoint, statusline: cachedStatusline });
       void vscode.env.openExternal(vscode.Uri.parse(url));
     }),
   );
@@ -134,7 +114,6 @@ export function activate(context: vscode.ExtensionContext): void {
       daemonUrl = readDaemonUrl(updated);
       cloudEndpoint = readCloudEndpoint(updated);
       dataPollInterval = readPollingInterval(updated);
-      includeOtherSurfaces = readIncludeOtherSurfaces(updated);
       suppressUpdatePrompt = readSuppressUpdatePrompt(updated);
       restartDataPoll(daemonUrl, cloudEndpoint, dataPollInterval, context);
       requestRefresh(daemonUrl, cloudEndpoint, context);
@@ -152,7 +131,6 @@ export function activate(context: vscode.ExtensionContext): void {
       daemonUrl = readDaemonUrl(updated);
       cloudEndpoint = readCloudEndpoint(updated);
       dataPollInterval = readPollingInterval(updated);
-      includeOtherSurfaces = readIncludeOtherSurfaces(updated);
       suppressUpdatePrompt = readSuppressUpdatePrompt(updated);
       restartDataPoll(daemonUrl, cloudEndpoint, dataPollInterval, context);
       requestRefresh(daemonUrl, cloudEndpoint, context);
@@ -215,14 +193,6 @@ function readCloudEndpoint(settings: vscode.WorkspaceConfiguration): string {
 
 function readPollingInterval(settings: vscode.WorkspaceConfiguration): number {
   return readSecuritySensitive<number>(settings, "pollingIntervalMs", 15000);
-}
-
-// `budi.includeOtherSurfaces` is the opt-out for the per-IDE filter
-// added in siropkin/budi-cursor#50. It widens the analytics scope
-// rather than redirecting any traffic, so it is read through the
-// regular merged config (workspace settings are honored).
-function readIncludeOtherSurfaces(settings: vscode.WorkspaceConfiguration): boolean {
-  return settings.get<boolean>("includeOtherSurfaces", false);
 }
 
 // `budi.suppressUpdatePrompt` lets users on centrally-managed daemons
@@ -370,11 +340,9 @@ async function refreshData(
   const cwd = folders?.[0]?.uri.fsPath;
   if (cwd) writeActiveWorkspace(cwd);
 
-  const providers = buildProviderList(host, getDetectedProviders());
-  const surfaces = surfaceFilterForHost(host, includeOtherSurfaces);
   const [health, statusline] = await Promise.all([
     fetchDaemonHealth(daemonUrl),
-    fetchStatusline(daemonUrl, providers, cwd, surfaces),
+    fetchStatusline(daemonUrl, cwd),
   ]);
   cachedStatusline = statusline;
 
@@ -386,8 +354,8 @@ async function refreshData(
 
   const state = deriveHealthState(health, statusline, everSawDaemon);
   lastState = state;
-  statusBarItem.text = buildStatusText(state, statusline, host);
-  statusBarItem.tooltip = buildTooltip(state, statusline, cloudEndpoint, host, health);
+  statusBarItem.text = buildStatusText(state, statusline);
+  statusBarItem.tooltip = buildTooltip(state, statusline, cloudEndpoint, health);
 
   // Single-line, grep-friendly resolved-decision log. Downstream debugging
   // ("why does my bar say update needed?") is one grep against this line
@@ -470,7 +438,6 @@ function openWelcome(
   cloudEndpoint: string,
 ): void {
   showWelcome(context, stage, {
-    host,
     onRecheck: async () => {
       log.appendLine("[budi] welcome-view recheck triggered");
       // A single eager poll; the normal loop keeps going underneath.
