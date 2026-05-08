@@ -106,8 +106,8 @@ describe("deriveHealthState", () => {
     api_version: MIN_API_VERSION,
   };
 
-  it("returns red when the daemon is unreachable and we've seen it healthy before", () => {
-    expect(deriveHealthState(null, null, true)).toBe("red");
+  it("returns unreachable when the daemon is unreachable and we've seen it healthy before (siropkin/budi-cursor#51)", () => {
+    expect(deriveHealthState(null, null, true)).toBe("unreachable");
   });
 
   it("returns firstRun when the daemon is unreachable and we've never seen it before (#314)", () => {
@@ -115,12 +115,23 @@ describe("deriveHealthState", () => {
   });
 
   it("defaults everSawDaemon to true (preserves pre-#314 behavior for existing callers)", () => {
-    expect(deriveHealthState(null, null)).toBe("red");
+    expect(deriveHealthState(null, null)).toBe("unreachable");
   });
 
-  it("returns red when the daemon api_version is too old", () => {
+  it("returns version-stale when the daemon api_version is too old (siropkin/budi-cursor#51)", () => {
     const old: DaemonHealth = { ok: true, version: "8.0.0", api_version: MIN_API_VERSION - 1 };
-    expect(deriveHealthState(old, { cost_1d: 5 }, true)).toBe("red");
+    expect(deriveHealthState(old, { cost_1d: 5 }, true)).toBe("version-stale");
+  });
+
+  it("distinguishes version-stale from unreachable — they are different actions for the user", () => {
+    // unreachable = "start the daemon"; version-stale = "upgrade the daemon".
+    // The split is the whole reason siropkin/budi-cursor#51 exists.
+    const stale: DaemonHealth = {
+      ok: true,
+      version: "8.0.0",
+      api_version: MIN_API_VERSION - 1,
+    };
+    expect(deriveHealthState(null, null, true)).not.toBe(deriveHealthState(stale, null, true));
   });
 
   it("returns yellow when the daemon is healthy but no Cursor traffic is recorded", () => {
@@ -160,7 +171,15 @@ describe("buildStatusText", () => {
   });
 
   it("shows offline copy when the daemon is unreachable", () => {
-    expect(buildStatusText("red", null)).toBe("budi · offline");
+    expect(buildStatusText("unreachable", null)).toBe("budi · offline");
+  });
+
+  it("shows 'update needed' copy when the daemon is reachable but version-stale (siropkin/budi-cursor#51)", () => {
+    expect(buildStatusText("version-stale", null)).toBe("budi · update needed");
+  });
+
+  it("the version-stale copy is distinct from the offline copy — that's the whole point of the split", () => {
+    expect(buildStatusText("unreachable", null)).not.toBe(buildStatusText("version-stale", null));
   });
 
   it("shows the bare budi label during startup", () => {
@@ -178,7 +197,7 @@ describe("buildStatusText", () => {
   });
 
   it("never emits a leading colored-circle glyph", () => {
-    const states = ["green", "yellow", "red", "gray", "firstRun"] as const;
+    const states = ["green", "yellow", "unreachable", "version-stale", "gray", "firstRun"] as const;
     for (const state of states) {
       expect(buildStatusText(state, null)).not.toMatch(/[\u{1F7E2}\u{1F7E1}\u{1F534}⚪]/u);
     }
@@ -232,10 +251,34 @@ describe("buildTooltip", () => {
     expect(tip).toContain("Provider: cursor");
   });
 
-  it("points the user at `budi doctor` when the daemon is offline", () => {
-    const tip = buildTooltip("red", null, "https://app.getbudi.dev");
+  it("points the user at `budi doctor` when the daemon is unreachable", () => {
+    const tip = buildTooltip("unreachable", null, "https://app.getbudi.dev");
     expect(tip).toContain("Daemon not reachable");
     expect(tip).toContain("budi doctor");
+  });
+
+  it("names the installed daemon, the required api_version, and the upgrade command when version-stale (siropkin/budi-cursor#51)", () => {
+    const tip = buildTooltip("version-stale", null, "https://app.getbudi.dev", "cursor", {
+      ok: true,
+      version: "8.4.1",
+      api_version: 0,
+    });
+    expect(tip).toContain("budi update needed");
+    expect(tip).toContain("8.4.1");
+    expect(tip).toContain("api_version 0");
+    expect(tip).toContain(`Required api_version: ${MIN_API_VERSION}`);
+    expect(tip).toContain("budi update");
+    // Must not look like the unreachable copy — the action is different.
+    expect(tip).not.toContain("Daemon not reachable");
+  });
+
+  it("renders a sensible version-stale tooltip even if no DaemonHealth was passed", () => {
+    // Defensive path — callers in older test fixtures may omit the health
+    // arg. The tooltip should still render copy, just without the version
+    // detail.
+    const tip = buildTooltip("version-stale", null, "https://app.getbudi.dev");
+    expect(tip).toContain("budi update needed");
+    expect(tip).toContain(`Required api_version: ${MIN_API_VERSION}`);
   });
 
   it("nudges the user when the daemon is reachable but has no traffic", () => {

@@ -286,35 +286,46 @@ export function formatCostLine(costs: ResolvedCosts): string {
   return parts.join(" · ");
 }
 
-export type HealthState = "green" | "yellow" | "red" | "gray" | "firstRun";
+export type HealthState =
+  | "green"
+  | "yellow"
+  | "unreachable"
+  | "version-stale"
+  | "gray"
+  | "firstRun";
 
 /**
- * Decide which health state the status bar is in, per siropkin/budi#232
- * and #314. The state drives the status-bar copy (`budi`,
- * `budi · offline`, `budi · setup`, `budi · $X 1d · …`) and the
- * welcome-view lifecycle; no visible glyph rides on top of it.
+ * Decide which health state the status bar is in, per siropkin/budi#232,
+ * #314, and siropkin/budi-cursor#51. The state drives the status-bar copy
+ * (`budi`, `budi · offline`, `budi · update needed`, `budi · setup`,
+ * `budi · $X 1d · …`) and the welcome-view lifecycle; no visible glyph
+ * rides on top of it.
  *
- * - `gray`     — extension is still starting up (no reading yet).
- * - `firstRun` — the daemon is unreachable **and** this extension install has
- *                never seen a healthy daemon. The user discovered budi via the
- *                marketplace and has not installed the engine yet — we route
- *                them to the welcome view instead of a "daemon offline" error
- *                (#314).
- * - `red`      — the daemon is unreachable or reports an incompatible
- *                `api_version`, **and** this extension install has seen a
- *                healthy daemon at some point (so "offline" is the accurate
- *                story, not "not installed").
- * - `yellow`   — daemon is healthy but this machine has no Cursor usage in the
- *                rolling window.
- * - `green`    — daemon is healthy and Cursor traffic is being recorded.
+ * - `gray`          — extension is still starting up (no reading yet).
+ * - `firstRun`      — the daemon is unreachable **and** this extension install
+ *                     has never seen a healthy daemon. The user discovered
+ *                     budi via the marketplace and has not installed the
+ *                     engine yet — we route them to the welcome view instead
+ *                     of a "daemon offline" error (#314).
+ * - `unreachable`   — the daemon is unreachable **and** this extension install
+ *                     has seen a healthy daemon at some point. "offline" is
+ *                     the accurate story (the daemon is installed but not
+ *                     responding), not "not installed".
+ * - `version-stale` — the daemon is reachable but reports an `api_version`
+ *                     below `MIN_API_VERSION`. Distinct from `unreachable`
+ *                     because the action is "upgrade the daemon", not "start
+ *                     the daemon" (siropkin/budi-cursor#51).
+ * - `yellow`        — daemon is healthy but this machine has no AI traffic in
+ *                     the rolling window.
+ * - `green`         — daemon is healthy and traffic is being recorded.
  */
 export function deriveHealthState(
   health: DaemonHealth | null,
   statusline: StatuslineData | null,
   everSawDaemon = true,
 ): HealthState {
-  if (!health) return everSawDaemon ? "red" : "firstRun";
-  if (health.api_version < MIN_API_VERSION) return "red";
+  if (!health) return everSawDaemon ? "unreachable" : "firstRun";
+  if (health.api_version < MIN_API_VERSION) return "version-stale";
   if (!statusline) return "yellow";
   const costs = resolveCosts(statusline);
   const hasTraffic = costs.cost1d > 0 || costs.cost7d > 0 || costs.cost30d > 0;
@@ -377,6 +388,7 @@ export function buildTooltip(
   statusline: StatuslineData | null,
   cloudEndpoint: string,
   host: Host = "cursor",
+  health: DaemonHealth | null = null,
 ): string {
   const contributing = statusline?.contributing_providers ?? [];
   const lines: string[] = [buildTooltipHeader(host, contributing), ""];
@@ -385,11 +397,25 @@ export function buildTooltip(
     lines.push("Click to set it up in one step.");
     return lines.join("\n");
   }
-  if (state === "red") {
+  if (state === "unreachable") {
     lines.push("Daemon not reachable.");
     lines.push("Run `budi doctor` to verify.");
     lines.push("");
     lines.push("Click to open the dashboard.");
+    return lines.join("\n");
+  }
+  if (state === "version-stale") {
+    // The daemon answered /health but its api_version is older than the
+    // wire shape this extension depends on. The tooltip names what is
+    // installed, what is required, and the one-line upgrade command so
+    // the user can act without grepping docs (siropkin/budi-cursor#51).
+    const installedVersion = health?.version ?? "unknown";
+    const installedApi = health?.api_version ?? 0;
+    lines.push("budi update needed.");
+    lines.push(`Installed: ${installedVersion} (api_version ${installedApi}).`);
+    lines.push(`Required api_version: ${MIN_API_VERSION}.`);
+    lines.push("");
+    lines.push("Run `budi update` (or `brew upgrade budi`) and reload the window.");
     return lines.join("\n");
   }
   const costs = resolveCosts(statusline ?? {});
@@ -444,7 +470,8 @@ export function buildStatusText(
 ): string {
   void host;
   if (state === "firstRun") return "budi · setup";
-  if (state === "red") return "budi · offline";
+  if (state === "unreachable") return "budi · offline";
+  if (state === "version-stale") return "budi · update needed";
   if (state === "gray") return "budi";
   const costs = resolveCosts(statusline ?? {});
   return `budi · ${formatCostLine(costs)}`;

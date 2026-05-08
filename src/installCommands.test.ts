@@ -4,10 +4,14 @@ import {
   INIT_HANDOFF_COMMAND,
   INIT_HANDOFF_COMMAND_WINDOWS,
   LINUX_COMMAND,
+  LINUX_UPGRADE_COMMAND,
   MACOS_COMMAND,
+  MACOS_UPGRADE_COMMAND,
   WINDOWS_COMMAND,
+  WINDOWS_UPGRADE_COMMAND,
   initHandoffCommandFor,
   installCommandForPlatform,
+  upgradeCommandForPlatform,
 } from "./installCommands";
 
 describe("installCommandForPlatform", () => {
@@ -43,6 +47,27 @@ describe("canonical install commands", () => {
     expect(WINDOWS_COMMAND.command).toBe(
       "irm https://raw.githubusercontent.com/siropkin/budi/main/scripts/install-standalone.ps1 | iex",
     );
+  });
+});
+
+describe("upgradeCommandForPlatform (siropkin/budi-cursor#51)", () => {
+  it("uses `brew upgrade` against the same Homebrew tap on darwin", () => {
+    const cmd = upgradeCommandForPlatform("darwin");
+    expect(cmd).toEqual(MACOS_UPGRADE_COMMAND);
+    expect(cmd.command).toBe("brew upgrade siropkin/budi/budi");
+  });
+
+  it("re-runs the standalone installer on linux (the script is idempotent)", () => {
+    const cmd = upgradeCommandForPlatform("linux");
+    expect(cmd).toEqual(LINUX_UPGRADE_COMMAND);
+    // Same one-liner as the install path — re-running upgrades in place.
+    expect(cmd.command).toBe(LINUX_COMMAND.command);
+  });
+
+  it("re-runs the PowerShell installer on Windows", () => {
+    const cmd = upgradeCommandForPlatform("win32");
+    expect(cmd).toEqual(WINDOWS_UPGRADE_COMMAND);
+    expect(cmd.command).toBe(WINDOWS_COMMAND.command);
   });
 });
 

@@ -79,6 +79,11 @@
           "type": "boolean",
           "default": false,
           "description": "By default, the status bar only shows activity from this IDE (Cursor in Cursor, VS Code in VS Code). Set to true to aggregate spend across every editor on this machine, like v1.4.x did."
+        },
+        "budi.suppressUpdatePrompt": {
+          "type": "boolean",
+          "default": false,
+          "description": "When the local daemon's api_version is older than this extension requires, suppress the actionable upgrade toast. The status bar still reads `budi · update needed` so the user is not silently left on a stale daemon. Use this on machines where the daemon is centrally managed and you cannot run `budi update` yourself."
         }
       }
     }
