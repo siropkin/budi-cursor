@@ -31,6 +31,12 @@
     "onStartupFinished"
   ],
   "main": "./out/extension.js",
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": "limited",
+      "description": "In untrusted workspaces, budi ignores workspace-scoped overrides for daemonUrl, cloudEndpoint, and pollingIntervalMs. The status bar still works against the user-scoped (or default) daemon."
+    }
+  },
   "contributes": {
     "commands": [
       {

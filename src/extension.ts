@@ -65,7 +65,7 @@ export function activate(context: vscode.ExtensionContext): void {
   const settings = vscode.workspace.getConfiguration("budi");
   let daemonUrl: string = readDaemonUrl(settings);
   let cloudEndpoint: string = readCloudEndpoint(settings);
-  let dataPollInterval: number = settings.get("pollingIntervalMs", 15000);
+  let dataPollInterval: number = readPollingInterval(settings);
 
   const folders = vscode.workspace.workspaceFolders;
   log.appendLine(
@@ -125,7 +125,23 @@ export function activate(context: vscode.ExtensionContext): void {
       const updated = vscode.workspace.getConfiguration("budi");
       daemonUrl = readDaemonUrl(updated);
       cloudEndpoint = readCloudEndpoint(updated);
-      dataPollInterval = updated.get("pollingIntervalMs", 15000);
+      dataPollInterval = readPollingInterval(updated);
+      restartDataPoll(daemonUrl, cloudEndpoint, dataPollInterval, context);
+      requestRefresh(daemonUrl, cloudEndpoint, context);
+    }),
+  );
+
+  // Re-read settings when the user later trusts the workspace
+  // (siropkin/budi-cursor#45). Until trust is granted we ignore
+  // workspace-scoped overrides for security-sensitive keys; once
+  // granted, those values become effective without an editor reload.
+  context.subscriptions.push(
+    vscode.workspace.onDidGrantWorkspaceTrust(() => {
+      log.appendLine("[budi] workspace trust granted — re-reading settings");
+      const updated = vscode.workspace.getConfiguration("budi");
+      daemonUrl = readDaemonUrl(updated);
+      cloudEndpoint = readCloudEndpoint(updated);
+      dataPollInterval = readPollingInterval(updated);
       restartDataPoll(daemonUrl, cloudEndpoint, dataPollInterval, context);
       requestRefresh(daemonUrl, cloudEndpoint, context);
     }),
@@ -136,13 +152,33 @@ export function activate(context: vscode.ExtensionContext): void {
   startDataPoll(daemonUrl, cloudEndpoint, dataPollInterval, context);
 }
 
+// Workspace-trust gate (siropkin/budi-cursor#45). In an untrusted
+// workspace we deliberately ignore workspace-scoped overrides and read
+// only the user-scoped (global) value, falling back to the default if
+// the user has not set one. This is the platform-level companion to
+// the per-setting allow-lists in #42 and #43: even if a malicious repo
+// somehow bypasses the value-shape checks, an untrusted workspace's
+// overrides never reach this code path. We cannot rely on VS Code's
+// untrusted-workspace machinery alone because the user can opt back
+// into "support all workspaces" — so the trust gate is enforced here
+// in code, not just declared in `package.json`.
+function readSecuritySensitive<T>(
+  settings: vscode.WorkspaceConfiguration,
+  key: string,
+  fallback: T,
+): T {
+  if (vscode.workspace.isTrusted) return settings.get<T>(key, fallback);
+  const inspected = settings.inspect<T>(key);
+  return inspected?.globalValue ?? fallback;
+}
+
 // Refuse non-loopback `daemonUrl` overrides (siropkin/budi-cursor#42).
 // `getConfiguration("budi").get` returns the merged user/workspace
 // value, so a malicious repo's `.vscode/settings.json` would otherwise
 // redirect daemon polling — including the absolute workspace path — to
 // an attacker host. Loopback is the only legitimate target per SOUL.md.
 function readDaemonUrl(settings: vscode.WorkspaceConfiguration): string {
-  const raw = settings.get<string>("daemonUrl", DEFAULT_DAEMON_URL);
+  const raw = readSecuritySensitive<string>(settings, "daemonUrl", DEFAULT_DAEMON_URL);
   if (isLoopbackDaemonUrl(raw)) return raw;
   log.appendLine(
     `[budi] ignoring non-loopback daemonUrl=${JSON.stringify(raw)} — daemon must run on 127.0.0.1, localhost, or ::1. Falling back to ${DEFAULT_DAEMON_URL}.`,
@@ -158,12 +194,16 @@ function readDaemonUrl(settings: vscode.WorkspaceConfiguration): string {
 // in this constellation"); anything else is treated as malicious and
 // the default is used instead.
 function readCloudEndpoint(settings: vscode.WorkspaceConfiguration): string {
-  const raw = settings.get<string>("cloudEndpoint", DEFAULT_CLOUD_ENDPOINT);
+  const raw = readSecuritySensitive<string>(settings, "cloudEndpoint", DEFAULT_CLOUD_ENDPOINT);
   if (isAllowedCloudEndpoint(raw)) return raw;
   log.appendLine(
     `[budi] ignoring off-domain cloudEndpoint=${JSON.stringify(raw)} — cloud endpoint must be an https URL on getbudi.dev. Falling back to ${DEFAULT_CLOUD_ENDPOINT}.`,
   );
   return DEFAULT_CLOUD_ENDPOINT;
+}
+
+function readPollingInterval(settings: vscode.WorkspaceConfiguration): number {
+  return readSecuritySensitive<number>(settings, "pollingIntervalMs", 15000);
 }
 
 export function deactivate(): void {
