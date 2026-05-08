@@ -97,6 +97,41 @@ export function defaultProviderForHost(host: Host): string {
 }
 
 /**
+ * Map an editor `Host` to the daemon's `surface` filter
+ * (siropkin/budi-cursor#50, paired with siropkin/budi#701/#702).
+ *
+ * The returned list is appended as `?surface=<csv>` so the status bar
+ * and analytics views only reflect activity from *this* IDE instead of
+ * aggregating across every editor on the machine.
+ *
+ * - `cursor`   → `["cursor"]`.
+ * - `vscode`   → `["vscode"]`.
+ * - `vscodium` → `["vscode"]` — VSCodium re-uses VS Code's paths and
+ *                shows up as `vscode` in core's path-based inference.
+ * - `unknown`  → `[]` (no filter). Failsafe: if we couldn't identify the
+ *                editor we don't want to accidentally hide the user's
+ *                data.
+ *
+ * `includeOtherSurfaces=true` short-circuits to `[]` regardless of host
+ * for the holistic-view crowd.
+ *
+ * Old daemons (pre-#702) silently drop unknown query params, so sending
+ * the filter is byte-safe against them — see #702 acceptance for the
+ * unknown-surface tolerance contract.
+ */
+const SURFACE_BY_HOST: Readonly<Record<Host, readonly string[]>> = {
+  cursor: ["cursor"],
+  vscode: ["vscode"],
+  vscodium: ["vscode"],
+  unknown: [],
+};
+
+export function surfaceFilterForHost(host: Host, includeOtherSurfaces: boolean): readonly string[] {
+  if (includeOtherSurfaces) return [];
+  return SURFACE_BY_HOST[host];
+}
+
+/**
  * Human-facing host label used in marketplace-visible copy
  * (status bar tooltip header, welcome view) — siropkin/budi-cursor#29.
  *
@@ -570,11 +605,18 @@ export function fetchDaemonHealth(daemonUrl: string): Promise<DaemonHealth | nul
  * `project_dir` is optional. When passed it unlocks `project_cost`
  * (unused on the statusline surface today) and gives the daemon the
  * repo-local context it needs for accurate branch attribution.
+ *
+ * `surfaces` is optional and follows the same comma-list shape as
+ * `providers` (siropkin/budi-cursor#50, paired with siropkin/budi#702).
+ * An empty list omits the filter entirely so old daemons and the
+ * `includeOtherSurfaces=true` opt-out remain byte-identical to the
+ * pre-#50 wire shape.
  */
 export function buildStatuslineUrl(
   daemonUrl: string,
   providers: readonly string[],
   projectDir?: string,
+  surfaces: readonly string[] = [],
 ): string {
   const url = new URL("/analytics/statusline", daemonUrl);
   if (providers.length > 0) {
@@ -583,6 +625,9 @@ export function buildStatuslineUrl(
   if (projectDir) {
     url.searchParams.set("project_dir", projectDir);
   }
+  if (surfaces.length > 0) {
+    url.searchParams.set("surface", surfaces.join(","));
+  }
   return url.toString();
 }
 
@@ -590,6 +635,9 @@ export function fetchStatusline(
   daemonUrl: string,
   providers: readonly string[],
   projectDir?: string,
+  surfaces: readonly string[] = [],
 ): Promise<StatuslineData | null> {
-  return fetchDaemonJson<StatuslineData>(buildStatuslineUrl(daemonUrl, providers, projectDir));
+  return fetchDaemonJson<StatuslineData>(
+    buildStatuslineUrl(daemonUrl, providers, projectDir, surfaces),
+  );
 }

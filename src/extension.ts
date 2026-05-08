@@ -18,6 +18,7 @@ import {
   isLoopbackDaemonUrl,
   MIN_API_VERSION,
   resolveCosts,
+  surfaceFilterForHost,
 } from "./budiClient";
 import { getDetectedProviders, startExtensionsProbe } from "./extensionsProbe";
 import { clearActiveWorkspace, writeActiveWorkspace } from "./sessionStore";
@@ -42,6 +43,7 @@ let daemonOfflineWarningLogged = false;
 let lastState: HealthState = "gray";
 let everSawDaemon = false;
 let host: Host = "cursor";
+let includeOtherSurfaces = false;
 
 export function activate(context: vscode.ExtensionContext): void {
   log = vscode.window.createOutputChannel("budi");
@@ -66,6 +68,7 @@ export function activate(context: vscode.ExtensionContext): void {
   let daemonUrl: string = readDaemonUrl(settings);
   let cloudEndpoint: string = readCloudEndpoint(settings);
   let dataPollInterval: number = readPollingInterval(settings);
+  includeOtherSurfaces = readIncludeOtherSurfaces(settings);
 
   const folders = vscode.workspace.workspaceFolders;
   log.appendLine(
@@ -126,6 +129,7 @@ export function activate(context: vscode.ExtensionContext): void {
       daemonUrl = readDaemonUrl(updated);
       cloudEndpoint = readCloudEndpoint(updated);
       dataPollInterval = readPollingInterval(updated);
+      includeOtherSurfaces = readIncludeOtherSurfaces(updated);
       restartDataPoll(daemonUrl, cloudEndpoint, dataPollInterval, context);
       requestRefresh(daemonUrl, cloudEndpoint, context);
     }),
@@ -142,6 +146,7 @@ export function activate(context: vscode.ExtensionContext): void {
       daemonUrl = readDaemonUrl(updated);
       cloudEndpoint = readCloudEndpoint(updated);
       dataPollInterval = readPollingInterval(updated);
+      includeOtherSurfaces = readIncludeOtherSurfaces(updated);
       restartDataPoll(daemonUrl, cloudEndpoint, dataPollInterval, context);
       requestRefresh(daemonUrl, cloudEndpoint, context);
     }),
@@ -204,6 +209,14 @@ function readCloudEndpoint(settings: vscode.WorkspaceConfiguration): string {
 
 function readPollingInterval(settings: vscode.WorkspaceConfiguration): number {
   return readSecuritySensitive<number>(settings, "pollingIntervalMs", 15000);
+}
+
+// `budi.includeOtherSurfaces` is the opt-out for the per-IDE filter
+// added in siropkin/budi-cursor#50. It widens the analytics scope
+// rather than redirecting any traffic, so it is read through the
+// regular merged config (workspace settings are honored).
+function readIncludeOtherSurfaces(settings: vscode.WorkspaceConfiguration): boolean {
+  return settings.get<boolean>("includeOtherSurfaces", false);
 }
 
 export function deactivate(): void {
@@ -287,9 +300,10 @@ async function refreshData(
   if (cwd) writeActiveWorkspace(cwd);
 
   const providers = buildProviderList(host, getDetectedProviders());
+  const surfaces = surfaceFilterForHost(host, includeOtherSurfaces);
   const [health, statusline] = await Promise.all([
     fetchDaemonHealth(daemonUrl),
-    fetchStatusline(daemonUrl, providers, cwd),
+    fetchStatusline(daemonUrl, providers, cwd, surfaces),
   ]);
   cachedStatusline = statusline;
 
