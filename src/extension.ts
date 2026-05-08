@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import {
+  DaemonHealth,
   DEFAULT_CLOUD_ENDPOINT,
   DEFAULT_DAEMON_URL,
   Host,
@@ -21,6 +22,7 @@ import {
   surfaceFilterForHost,
 } from "./budiClient";
 import { getDetectedProviders, startExtensionsProbe } from "./extensionsProbe";
+import { upgradeCommandForPlatform } from "./installCommands";
 import { clearActiveWorkspace, writeActiveWorkspace } from "./sessionStore";
 import {
   hideWelcome,
@@ -35,6 +37,7 @@ const EVER_SAW_DAEMON_KEY = "budi.everSawDaemon";
 let statusBarItem: vscode.StatusBarItem;
 let dataPollTimer: ReturnType<typeof setInterval> | undefined;
 let log: vscode.OutputChannel;
+let upgradeChannel: vscode.OutputChannel | undefined;
 let refreshInFlight = false;
 let pendingRefreshDaemonUrl: string | undefined;
 let cachedStatusline: StatuslineData | null = null;
@@ -44,6 +47,7 @@ let lastState: HealthState = "gray";
 let everSawDaemon = false;
 let host: Host = "cursor";
 let includeOtherSurfaces = false;
+let suppressUpdatePrompt = false;
 
 export function activate(context: vscode.ExtensionContext): void {
   log = vscode.window.createOutputChannel("budi");
@@ -69,6 +73,7 @@ export function activate(context: vscode.ExtensionContext): void {
   let cloudEndpoint: string = readCloudEndpoint(settings);
   let dataPollInterval: number = readPollingInterval(settings);
   includeOtherSurfaces = readIncludeOtherSurfaces(settings);
+  suppressUpdatePrompt = readSuppressUpdatePrompt(settings);
 
   const folders = vscode.workspace.workspaceFolders;
   log.appendLine(
@@ -130,6 +135,7 @@ export function activate(context: vscode.ExtensionContext): void {
       cloudEndpoint = readCloudEndpoint(updated);
       dataPollInterval = readPollingInterval(updated);
       includeOtherSurfaces = readIncludeOtherSurfaces(updated);
+      suppressUpdatePrompt = readSuppressUpdatePrompt(updated);
       restartDataPoll(daemonUrl, cloudEndpoint, dataPollInterval, context);
       requestRefresh(daemonUrl, cloudEndpoint, context);
     }),
@@ -147,12 +153,12 @@ export function activate(context: vscode.ExtensionContext): void {
       cloudEndpoint = readCloudEndpoint(updated);
       dataPollInterval = readPollingInterval(updated);
       includeOtherSurfaces = readIncludeOtherSurfaces(updated);
+      suppressUpdatePrompt = readSuppressUpdatePrompt(updated);
       restartDataPoll(daemonUrl, cloudEndpoint, dataPollInterval, context);
       requestRefresh(daemonUrl, cloudEndpoint, context);
     }),
   );
 
-  void checkApiVersionOnce(daemonUrl);
   requestRefresh(daemonUrl, cloudEndpoint, context);
   startDataPoll(daemonUrl, cloudEndpoint, dataPollInterval, context);
 }
@@ -219,6 +225,15 @@ function readIncludeOtherSurfaces(settings: vscode.WorkspaceConfiguration): bool
   return settings.get<boolean>("includeOtherSurfaces", false);
 }
 
+// `budi.suppressUpdatePrompt` lets users on centrally-managed daemons
+// silence the actionable upgrade toast when a `version-stale` health is
+// detected (siropkin/budi-cursor#51). The status-bar copy still reads
+// `budi · update needed`, so this is a softer mute, not a hide. Read
+// through the regular merged config — there is no security blast radius.
+function readSuppressUpdatePrompt(settings: vscode.WorkspaceConfiguration): boolean {
+  return settings.get<boolean>("suppressUpdatePrompt", false);
+}
+
 export function deactivate(): void {
   if (dataPollTimer) {
     clearInterval(dataPollTimer);
@@ -248,20 +263,76 @@ function restartDataPoll(
   startDataPoll(daemonUrl, cloudEndpoint, intervalMs, context);
 }
 
-async function checkApiVersionOnce(daemonUrl: string): Promise<void> {
-  const health = await fetchDaemonHealth(daemonUrl);
-  if (!health) return;
-  log.appendLine(
-    `[budi] daemon health: version=${health.version}, api_version=${health.api_version}`,
-  );
-  if (health.api_version < MIN_API_VERSION && !apiVersionWarningShown) {
-    apiVersionWarningShown = true;
-    void vscode.window.showWarningMessage(
-      `budi: The daemon (api_version ${health.api_version}) is older than ` +
-        `this extension requires (api_version ${MIN_API_VERSION}). ` +
-        `Run \`budi update\` or reinstall from https://getbudi.dev.`,
+/**
+ * Fire the actionable upgrade toast at most once per session
+ * (siropkin/budi-cursor#51). The toast offers two buttons:
+ *
+ * - **Show update command** — opens an output channel pre-populated with
+ *   `budi update` plus the platform-appropriate fallback (`brew upgrade`
+ *   on macOS, the standalone install script on Linux/Windows). We never
+ *   execute the command on the user's behalf — daemon installs span
+ *   Homebrew, manual binaries, and corp-managed paths.
+ * - **Dismiss** — silences the toast for the rest of the session. The
+ *   bar copy stays as `budi · update needed` so the surface does not
+ *   pretend the daemon is fine.
+ *
+ * `budi.suppressUpdatePrompt = true` skips the toast entirely (centrally
+ * managed daemons), but the bar copy and tooltip still surface the
+ * stale-version state.
+ */
+function maybeShowVersionStaleToast(health: DaemonHealth): void {
+  if (apiVersionWarningShown) return;
+  apiVersionWarningShown = true;
+  if (suppressUpdatePrompt) {
+    log.appendLine(
+      "[budi] version-stale detected but budi.suppressUpdatePrompt=true — toast suppressed.",
     );
+    return;
   }
+  void (async () => {
+    const choice = await vscode.window.showWarningMessage(
+      `budi: Local daemon is older than this extension requires ` +
+        `(daemon api_version=${health.api_version}, required=${MIN_API_VERSION}). ` +
+        `Run \`budi update\` and reload the window.`,
+      "Show update command",
+      "Dismiss",
+    );
+    if (choice === "Show update command") {
+      showUpgradeCommand(health);
+    }
+  })();
+}
+
+function ensureUpgradeChannel(): vscode.OutputChannel {
+  if (!upgradeChannel) {
+    upgradeChannel = vscode.window.createOutputChannel("budi: Update");
+  }
+  return upgradeChannel;
+}
+
+function showUpgradeCommand(health: DaemonHealth): void {
+  const channel = ensureUpgradeChannel();
+  const platformCommand = upgradeCommandForPlatform(process.platform);
+  channel.clear();
+  channel.appendLine("budi: Upgrade your local daemon");
+  channel.appendLine("");
+  channel.appendLine(`  Installed daemon: ${health.version} (api_version ${health.api_version})`);
+  channel.appendLine(`  Required api_version: ${MIN_API_VERSION}`);
+  channel.appendLine("");
+  channel.appendLine("Recommended one-liner (works on every platform):");
+  channel.appendLine("");
+  channel.appendLine("  $ budi update");
+  channel.appendLine("");
+  channel.appendLine(`Or, ${platformCommand.label}:`);
+  channel.appendLine("");
+  channel.appendLine(`  ${platformCommand.command}`);
+  channel.appendLine("");
+  channel.appendLine(
+    "After upgrading, reload this editor window (Developer: Reload Window) so the",
+  );
+  channel.appendLine("extension picks up the new daemon. The status bar should switch from");
+  channel.appendLine("`budi · update needed` back to the cost line.");
+  channel.show(true);
 }
 
 function requestRefresh(
@@ -316,17 +387,29 @@ async function refreshData(
   const state = deriveHealthState(health, statusline, everSawDaemon);
   lastState = state;
   statusBarItem.text = buildStatusText(state, statusline, host);
-  statusBarItem.tooltip = buildTooltip(state, statusline, cloudEndpoint, host);
+  statusBarItem.tooltip = buildTooltip(state, statusline, cloudEndpoint, host, health);
 
-  if (state === "red") {
+  // Single-line, grep-friendly resolved-decision log. Downstream debugging
+  // ("why does my bar say update needed?") is one grep against this line
+  // (siropkin/budi-cursor#51 acceptance #4).
+  if (health) {
+    const decision = health.api_version < MIN_API_VERSION ? "version-stale" : "accepted";
+    log.appendLine(
+      `[budi] daemon health: version=${health.version}, api_version=${health.api_version}, required=${MIN_API_VERSION}, decision=${decision}`,
+    );
+  }
+
+  if (state === "unreachable") {
     if (!daemonOfflineWarningLogged) {
-      log.appendLine(
-        "[budi] daemon not reachable — status bar showing offline. Run `budi doctor`.",
-      );
+      log.appendLine("[budi] daemon unreachable — status bar showing offline. Run `budi doctor`.");
       daemonOfflineWarningLogged = true;
     }
   } else {
     daemonOfflineWarningLogged = false;
+  }
+
+  if (state === "version-stale" && health) {
+    maybeShowVersionStaleToast(health);
   }
 
   // Drive the welcome view off the polled state so it stays in sync
@@ -357,15 +440,26 @@ function syncWelcomeView(state: HealthState, statusline: StatuslineData | null):
     return;
   }
 
-  // state === "red" while the welcome view is open means the user
-  // installed the daemon but it is still not reachable. Keep the
-  // install stage open with a hint in the output channel rather
-  // than an in-face modal.
-  if (state === "red") {
+  // state === "unreachable" while the welcome view is open means the
+  // user installed the daemon but it is still not responding. Keep the
+  // install stage open with a hint in the output channel rather than
+  // an in-face modal.
+  if (state === "unreachable") {
     transitionTo("needs-install");
     log.appendLine(
       "[budi] daemon still unreachable after install flow — run `budi doctor` once the install finishes.",
     );
+    return;
+  }
+
+  // state === "version-stale" means the daemon is responding (the
+  // install flow worked) but the user is on an older release than this
+  // extension supports. Move them past the install stage so the upgrade
+  // toast carries the action — re-running the install command would
+  // upgrade the daemon, but the welcome view is the wrong surface for
+  // that conversation.
+  if (state === "version-stale") {
+    transitionTo("needs-init");
   }
 }
 

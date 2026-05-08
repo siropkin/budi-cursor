@@ -67,6 +67,46 @@ export function installCommandForPlatform(platform: NodeJS.Platform): InstallCom
   return LINUX_COMMAND;
 }
 
+/**
+ * Platform-appropriate upgrade command for an already-installed daemon
+ * (siropkin/budi-cursor#51). On macOS this is `brew upgrade` against the
+ * Homebrew tap that `MACOS_COMMAND` installs from. On Linux/Windows the
+ * standalone install script overwrites the existing binary, so the same
+ * one-liner doubles as the upgrade path.
+ *
+ * Independent of `budi update`, the universal one-liner emitted first by
+ * the upgrade-prompt output channel: that path is preferred when the
+ * daemon is reachable, this one is the platform fallback.
+ */
+export const MACOS_UPGRADE_COMMAND: InstallCommand = {
+  platform: "macos",
+  label: "macOS",
+  shell: "bash",
+  command: "brew upgrade siropkin/budi/budi",
+};
+
+export const LINUX_UPGRADE_COMMAND: InstallCommand = {
+  platform: "linux",
+  label: "Linux",
+  shell: "bash",
+  command:
+    "curl -fsSL https://raw.githubusercontent.com/siropkin/budi/main/scripts/install-standalone.sh | bash",
+};
+
+export const WINDOWS_UPGRADE_COMMAND: InstallCommand = {
+  platform: "windows",
+  label: "Windows (PowerShell)",
+  shell: "powershell",
+  command:
+    "irm https://raw.githubusercontent.com/siropkin/budi/main/scripts/install-standalone.ps1 | iex",
+};
+
+export function upgradeCommandForPlatform(platform: NodeJS.Platform): InstallCommand {
+  if (platform === "win32") return WINDOWS_UPGRADE_COMMAND;
+  if (platform === "darwin") return MACOS_UPGRADE_COMMAND;
+  return LINUX_UPGRADE_COMMAND;
+}
+
 /** Command the welcome view offers after the daemon is detected — `budi init && budi doctor`. */
 export const INIT_HANDOFF_COMMAND = "budi init && budi doctor";
 
