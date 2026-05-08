@@ -492,23 +492,56 @@ export function isAllowedCloudEndpoint(url: string): boolean {
 }
 
 /**
- * Check daemon health and return version / api_version info.
- * Returns null if the daemon is unreachable.
+ * Hard ceiling on bytes accepted from the daemon per request. The
+ * legitimate `/health` and `/analytics/statusline` payloads are well
+ * under 1 KB; 64 KB leaves room for forward-compat fields without
+ * letting a hostile or buggy server flood the extension host's heap
+ * inside the 3 s request window (siropkin/budi-cursor#44). When the
+ * cap trips we destroy the socket and resolve `null` — the caller
+ * already treats `null` as "daemon unhealthy".
  */
-export function fetchDaemonHealth(daemonUrl: string): Promise<DaemonHealth | null> {
+const MAX_RESPONSE_BYTES = 64 * 1024;
+
+/**
+ * GET `${daemonUrl}${path}` and parse the response as JSON, with
+ * defense-in-depth limits: 3 s timeout, 64 KB body cap, 2xx-only,
+ * `application/json` content-type only. Resolves `null` on any
+ * failure — the caller folds that into `health = null` / "offline"
+ * rendering. Centralizing this also keeps `fetchDaemonHealth` and
+ * `fetchStatusline` from drifting (siropkin/budi-cursor#44).
+ */
+function fetchDaemonJson<T>(url: string): Promise<T | null> {
   return new Promise((resolve) => {
-    const req = http.get(`${daemonUrl}/health`, { timeout: 3000 }, (res) => {
-      let body = "";
+    const req = http.get(url, { timeout: 3000 }, (res) => {
+      const status = res.statusCode ?? 0;
+      const contentType = (res.headers["content-type"] ?? "").toString().toLowerCase();
+      if (status < 200 || status >= 300 || !contentType.includes("application/json")) {
+        // Drain quickly so the socket can be reused by keep-alive,
+        // then bail. `req.destroy()` would also work but resume() is
+        // gentler when the server is well-behaved but mis-typed.
+        res.resume();
+        resolve(null);
+        return;
+      }
+      const chunks: Buffer[] = [];
+      let len = 0;
       res.on("data", (chunk: Buffer) => {
-        body += chunk.toString();
+        len += chunk.length;
+        if (len > MAX_RESPONSE_BYTES) {
+          req.destroy();
+          resolve(null);
+          return;
+        }
+        chunks.push(chunk);
       });
       res.on("end", () => {
         try {
-          resolve(JSON.parse(body));
+          resolve(JSON.parse(Buffer.concat(chunks).toString("utf8")) as T);
         } catch {
           resolve(null);
         }
       });
+      res.on("error", () => resolve(null));
     });
     req.on("error", () => resolve(null));
     req.on("timeout", () => {
@@ -516,6 +549,14 @@ export function fetchDaemonHealth(daemonUrl: string): Promise<DaemonHealth | nul
       resolve(null);
     });
   });
+}
+
+/**
+ * Check daemon health and return version / api_version info.
+ * Returns null if the daemon is unreachable.
+ */
+export function fetchDaemonHealth(daemonUrl: string): Promise<DaemonHealth | null> {
+  return fetchDaemonJson<DaemonHealth>(`${daemonUrl}/health`);
 }
 
 /**
@@ -550,28 +591,5 @@ export function fetchStatusline(
   providers: readonly string[],
   projectDir?: string,
 ): Promise<StatuslineData | null> {
-  return new Promise((resolve) => {
-    const req = http.get(
-      buildStatuslineUrl(daemonUrl, providers, projectDir),
-      { timeout: 3000 },
-      (res) => {
-        let body = "";
-        res.on("data", (chunk: Buffer) => {
-          body += chunk.toString();
-        });
-        res.on("end", () => {
-          try {
-            resolve(JSON.parse(body));
-          } catch {
-            resolve(null);
-          }
-        });
-      },
-    );
-    req.on("error", () => resolve(null));
-    req.on("timeout", () => {
-      req.destroy();
-      resolve(null);
-    });
-  });
+  return fetchDaemonJson<StatuslineData>(buildStatuslineUrl(daemonUrl, providers, projectDir));
 }

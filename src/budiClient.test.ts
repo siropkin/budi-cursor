@@ -1,4 +1,7 @@
-import { describe, expect, it } from "vitest";
+import * as http from "http";
+import type { AddressInfo } from "net";
+
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
   buildProviderList,
@@ -13,6 +16,8 @@ import {
   defaultProviderForHost,
   deriveHealthState,
   detectHost,
+  fetchDaemonHealth,
+  fetchStatusline,
   formatCostLine,
   formatHostLabel,
   formatProviderName,
@@ -667,5 +672,86 @@ describe("isAllowedCloudEndpoint (siropkin/budi-cursor#43)", () => {
     expect(isAllowedCloudEndpoint("")).toBe(false);
     expect(isAllowedCloudEndpoint("not a url")).toBe(false);
     expect(isAllowedCloudEndpoint("app.getbudi.dev")).toBe(false);
+  });
+});
+
+describe("fetchDaemonJson defenses (#44)", () => {
+  let server: http.Server;
+  let baseUrl: string;
+  let handler: (req: http.IncomingMessage, res: http.ServerResponse) => void;
+
+  beforeEach(async () => {
+    handler = (_req, res) => {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end("{}");
+    };
+    server = http.createServer((req, res) => handler(req, res));
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const { port } = server.address() as AddressInfo;
+    baseUrl = `http://127.0.0.1:${port}`;
+  });
+
+  afterEach(async () => {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  });
+
+  it("parses a small valid JSON health payload", async () => {
+    handler = (_req, res) => {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: true, version: "8.4.1", api_version: 1 }));
+    };
+    const health = await fetchDaemonHealth(baseUrl);
+    expect(health).toEqual({ ok: true, version: "8.4.1", api_version: 1 });
+  });
+
+  it("returns null when the response exceeds the 64 KB cap", async () => {
+    // Stream past the cap, then never end inside the timeout window.
+    // The cap fires on the first chunk that pushes len over MAX, so we
+    // send 96 KB in a single write.
+    handler = (_req, res) => {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.write(`{"x":"${"A".repeat(96 * 1024)}`);
+      // Intentionally do not call res.end() — let the client close.
+    };
+    const result = await fetchDaemonHealth(baseUrl);
+    expect(result).toBeNull();
+  });
+
+  it("returns null on non-2xx responses even when the body is JSON", async () => {
+    handler = (_req, res) => {
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: false }));
+    };
+    const result = await fetchDaemonHealth(baseUrl);
+    expect(result).toBeNull();
+  });
+
+  it("returns null when content-type is not application/json", async () => {
+    handler = (_req, res) => {
+      // Valid JSON bytes but mistyped — refuse to parse so a misconfigured
+      // proxy or attacker-controlled HTML page can't be JSON-coerced.
+      res.writeHead(200, { "Content-Type": "text/html" });
+      res.end(JSON.stringify({ ok: true, version: "x", api_version: 1 }));
+    };
+    const result = await fetchDaemonHealth(baseUrl);
+    expect(result).toBeNull();
+  });
+
+  it("returns null on malformed JSON inside an otherwise-valid response", async () => {
+    handler = (_req, res) => {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end("{ not json");
+    };
+    const result = await fetchDaemonHealth(baseUrl);
+    expect(result).toBeNull();
+  });
+
+  it("applies the same defenses to fetchStatusline", async () => {
+    handler = (_req, res) => {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.write(`{"cost_1d":1,"x":"${"B".repeat(96 * 1024)}`);
+    };
+    const result = await fetchStatusline(baseUrl, ["cursor"]);
+    expect(result).toBeNull();
   });
 });
