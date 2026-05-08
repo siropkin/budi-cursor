@@ -58,7 +58,9 @@
         "budi.daemonUrl": {
           "type": "string",
           "default": "http://127.0.0.1:7878",
-          "description": "Base URL for the budi daemon."
+          "pattern": "^https?://(127\\.0\\.0\\.1|localhost|\\[::1\\])(:\\d+)?(/.*)?$",
+          "patternErrorMessage": "budi.daemonUrl must point at a loopback host (127.0.0.1, localhost, or ::1). Non-loopback values are ignored at runtime.",
+          "description": "Base URL for the budi daemon. Must be a loopback host (127.0.0.1, localhost, or ::1) — the daemon is local-only by design."
         },
         "budi.cloudEndpoint": {
           "type": "string",

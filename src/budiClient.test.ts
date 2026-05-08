@@ -8,12 +8,14 @@ import {
   buildTooltipHeader,
   clickUrl,
   CURSOR_PROVIDER,
+  DEFAULT_DAEMON_URL,
   defaultProviderForHost,
   deriveHealthState,
   detectHost,
   formatCostLine,
   formatHostLabel,
   formatProviderName,
+  isLoopbackDaemonUrl,
   MIN_API_VERSION,
   resolveCosts,
   type DaemonHealth,
@@ -553,5 +555,60 @@ describe("host plumbing (regression: cursor host output is byte-for-byte unchang
       statusline: { active_provider: CURSOR_PROVIDER, cost_1d: 0.1 },
     };
     expect(clickUrl({ ...opts, host: "cursor" })).toBe(clickUrl(opts));
+  });
+});
+
+describe("isLoopbackDaemonUrl (siropkin/budi-cursor#42)", () => {
+  it("accepts the documented default", () => {
+    expect(isLoopbackDaemonUrl(DEFAULT_DAEMON_URL)).toBe(true);
+  });
+
+  it("accepts every loopback alias on http and https", () => {
+    const accepted = [
+      "http://127.0.0.1:7878",
+      "http://127.0.0.1",
+      "http://localhost:7878",
+      "http://localhost",
+      "http://[::1]:7878",
+      "http://[::1]",
+      "https://127.0.0.1:7878",
+      "https://localhost:9000",
+    ];
+    for (const url of accepted) {
+      expect(isLoopbackDaemonUrl(url), url).toBe(true);
+    }
+  });
+
+  it("preserves an explicit path so future endpoints still parse", () => {
+    expect(isLoopbackDaemonUrl("http://127.0.0.1:7878/budi/")).toBe(true);
+  });
+
+  it("rejects remote hosts that would exfiltrate the workspace path", () => {
+    const rejected = [
+      "http://attacker.example.com:7878",
+      "http://attacker.example.com",
+      "https://evil.test/health",
+      "http://10.0.0.5:7878",
+      "http://192.168.1.5:7878",
+      "http://127.0.0.1.attacker.example.com:7878",
+      "http://localhost.attacker.example.com:7878",
+      // Userinfo trick: hostname is `attacker.example.com`, not `127.0.0.1`.
+      "http://127.0.0.1@attacker.example.com:7878",
+    ];
+    for (const url of rejected) {
+      expect(isLoopbackDaemonUrl(url), url).toBe(false);
+    }
+  });
+
+  it("rejects non-http(s) schemes", () => {
+    expect(isLoopbackDaemonUrl("file:///etc/passwd")).toBe(false);
+    expect(isLoopbackDaemonUrl("ftp://127.0.0.1")).toBe(false);
+    expect(isLoopbackDaemonUrl("javascript:alert(1)")).toBe(false);
+  });
+
+  it("rejects unparseable input", () => {
+    expect(isLoopbackDaemonUrl("")).toBe(false);
+    expect(isLoopbackDaemonUrl("not a url")).toBe(false);
+    expect(isLoopbackDaemonUrl("127.0.0.1:7878")).toBe(false);
   });
 });
