@@ -65,7 +65,9 @@
         "budi.cloudEndpoint": {
           "type": "string",
           "default": "https://app.getbudi.dev",
-          "description": "Cloud dashboard URL opened when the status bar item is clicked. Matches the Claude Code statusline click-through."
+          "pattern": "^https://([a-z0-9-]+\\.)*getbudi\\.dev(:\\d+)?(/.*)?$",
+          "patternErrorMessage": "budi.cloudEndpoint must be an https URL on getbudi.dev (or a subdomain). Off-domain values are ignored at runtime to prevent phishing.",
+          "description": "Cloud dashboard URL opened when the status bar item is clicked. Must be an https URL on getbudi.dev — off-domain overrides are ignored. Matches the Claude Code statusline click-through."
         }
       }
     }
