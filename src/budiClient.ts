@@ -6,12 +6,8 @@ import * as http from "http";
  * Authoritative spec: `docs/statusline-contract.md` in `siropkin/budi`
  * (shipped in 8.1 under siropkin/budi#224, host-scoped multi-provider
  * shape added in 8.4 under siropkin/budi#650, governed by ADR-0088 §4 +
- * §7 post-#648).
- *
- * The extension queries either provider-scoped (one provider) or
- * host-scoped (comma-list of providers detected in the current editor
- * host). Single-provider behavior on the Cursor host is byte-identical
- * to v1.3.x (siropkin/budi-cursor#28).
+ * §7 post-#648). v8.4.2 (siropkin/budi#702/#714) adds the `?surface=`
+ * filter that this extension hardcodes to `cursor` on every request.
  */
 export interface StatuslineData {
   /** Rolling last 24h, dollars. */
@@ -20,18 +16,18 @@ export interface StatuslineData {
   cost_7d?: number;
   /** Rolling last 30 days, dollars. */
   cost_30d?: number;
-  /** Most recent provider seen inside the 1d window, after the provider filter. */
+  /** Most recent provider seen inside the 1d window, after the surface filter. */
   active_provider?: string;
   /**
-   * Echoed back by the daemon only when exactly one provider was passed.
-   * Multi-provider responses omit this field — `contributing_providers`
-   * advertises the active scope instead.
+   * Echoed back by the daemon for single-provider responses. With
+   * `?surface=cursor` the daemon returns whatever providers Cursor's
+   * parser-local attribution recorded — typically just `cursor`, but
+   * Copilot-Chat-via-Cursor also lands here.
    */
   provider_scope?: string;
   /**
-   * Present only on multi-provider responses (the comma-list form).
-   * Deduplicated, normalized, in input order. Tooltip + click-through
-   * routing source for host-scoped surfaces.
+   * Present on multi-provider responses. Deduplicated, normalized, in
+   * input order. Tooltip "Tracking: …" line is rendered from this list.
    */
   contributing_providers?: string[];
   // Deprecated 8.0 aliases. The daemon still populates these with the same
@@ -46,6 +42,17 @@ export interface DaemonHealth {
   ok: boolean;
   version: string;
   api_version: number;
+  /**
+   * Canonical surface value space advertised by the daemon
+   * (siropkin/budi#702, /health.surfaces). v8.4.2 returns
+   * `["vscode","cursor","jetbrains","terminal","unknown"]`. Older
+   * daemons omit the field; readers must tolerate `undefined`.
+   *
+   * Read this rather than hardcoding the array — the v1.6.x surface
+   * picker UI will iterate it. v1.5.x exposes the field for forward
+   * compat; the request itself always sends `?surface=cursor`.
+   */
+  surfaces?: readonly string[];
 }
 
 export interface ResolvedCosts {
@@ -57,119 +64,42 @@ export interface ResolvedCosts {
 /**
  * The minimum daemon `/health.api_version` this extension requires.
  *
- * The wire shape this extension actually depends on — host-scoped
- * `?provider=a,b,c` requests + `contributing_providers` responses
- * (siropkin/budi#650) — landed in budi-core 8.4.0 *without* a bump to
- * the daemon's `API_VERSION` constant (`crates/budi-daemon/src/routes/
- * hooks.rs`), which is still `1`. v1.4.0 of this extension shipped with
- * `MIN_API_VERSION = 3` based on a comment that incorrectly cited
- * siropkin/budi#665 as the bump (that PR is a Copilot Chat parser fix,
- * unrelated). Net effect: every released daemon failed the gate and
- * the status bar showed `budi · offline`. Lowered back to `1` here per
- * siropkin/budi-cursor#40.
+ * v8.4.2 (siropkin/budi#714) is the first daemon release that bumps
+ * `/health.api_version` to `3` alongside the `?surface=` filter
+ * (siropkin/budi#702) this extension now consumes on every analytics
+ * request. Against an 8.4.1-or-older daemon (`api_version=1`) the gate
+ * trips and `deriveHealthState` returns `version-stale` so the status
+ * bar reads `budi · update needed` instead of silently rendering zeros
+ * — graceful degrade by way of the existing `version-stale` path
+ * (siropkin/budi-cursor#51), not break-on-old-daemons.
  *
- * Bump this only when budi-core actually bumps `API_VERSION` for a
- * breaking wire change — and update both sides in the same release.
+ * Cautionary tale (siropkin/budi-cursor#40): v1.4.0 over-bumped this to
+ * `3` based on a comment that incorrectly cited siropkin/budi#665 as
+ * the daemon-side bump. That PR was unrelated and the daemon was still
+ * advertising `api_version=1`, so every released daemon failed the gate
+ * and the bar showed `budi · offline`. v1.4.1 lowered it back to `1`.
+ * The lift here is correct *because* siropkin/budi#714 is the bump —
+ * verify the daemon CHANGELOG before changing this value again, and
+ * lift to a higher number only when budi-core actually moves past `3`.
  */
-export const MIN_API_VERSION = 1;
+export const MIN_API_VERSION = 3;
 
 /** The Cursor provider name on the budi-core wire — ADR-0088 §7. */
 export const CURSOR_PROVIDER = "cursor";
 
 /**
- * First-class provider for each editor host. Used as the fallback when
- * the installed-extensions probe finds nothing on a non-Cursor host —
- * a fresh VS Code install with no AI extension yet still gets a
- * sensible statusline scope. `copilot_chat` is the only non-Cursor
- * provider with a parser in budi-core 8.4.0; later releases may pick a
- * different default per host (siropkin/budi#295).
+ * The surface this extension always sends on analytics requests
+ * (siropkin/budi#702). The Cursor extension is, by construction,
+ * cursor-bound — there is no host detection that would pick anything
+ * else. JetBrains and (eventual) VS Code-native extensions ship
+ * separately and pin their own surface (`siropkin/budi-jetbrains#6`
+ * makes the parallel decision for `jetbrains`).
+ *
+ * Old daemons (pre-#702) silently drop unknown query params, so
+ * sending the filter is byte-safe against them — see #702 acceptance
+ * for the unknown-surface tolerance contract.
  */
-const DEFAULT_PROVIDER_BY_HOST: Readonly<Record<Host, string>> = {
-  cursor: "cursor",
-  vscode: "copilot_chat",
-  vscodium: "copilot_chat",
-  unknown: "copilot_chat",
-};
-
-/** Wire name of the first-class provider for a host (siropkin/budi-cursor#29). */
-export function defaultProviderForHost(host: Host): string {
-  return DEFAULT_PROVIDER_BY_HOST[host];
-}
-
-/**
- * Map an editor `Host` to the daemon's `surface` filter
- * (siropkin/budi-cursor#50, paired with siropkin/budi#701/#702).
- *
- * The returned list is appended as `?surface=<csv>` so the status bar
- * and analytics views only reflect activity from *this* IDE instead of
- * aggregating across every editor on the machine.
- *
- * - `cursor`   → `["cursor"]`.
- * - `vscode`   → `["vscode"]`.
- * - `vscodium` → `["vscode"]` — VSCodium re-uses VS Code's paths and
- *                shows up as `vscode` in core's path-based inference.
- * - `unknown`  → `[]` (no filter). Failsafe: if we couldn't identify the
- *                editor we don't want to accidentally hide the user's
- *                data.
- *
- * `includeOtherSurfaces=true` short-circuits to `[]` regardless of host
- * for the holistic-view crowd.
- *
- * Old daemons (pre-#702) silently drop unknown query params, so sending
- * the filter is byte-safe against them — see #702 acceptance for the
- * unknown-surface tolerance contract.
- */
-const SURFACE_BY_HOST: Readonly<Record<Host, readonly string[]>> = {
-  cursor: ["cursor"],
-  vscode: ["vscode"],
-  vscodium: ["vscode"],
-  unknown: [],
-};
-
-export function surfaceFilterForHost(host: Host, includeOtherSurfaces: boolean): readonly string[] {
-  if (includeOtherSurfaces) return [];
-  return SURFACE_BY_HOST[host];
-}
-
-/**
- * Human-facing host label used in marketplace-visible copy
- * (status bar tooltip header, welcome view) — siropkin/budi-cursor#29.
- *
- * `unknown` hosts fall back to "Editor" so the tooltip does not pretend
- * to recognize a fork it has not been taught.
- */
-const HOST_LABELS: Readonly<Record<Host, string>> = {
-  cursor: "Cursor",
-  vscode: "VS Code",
-  vscodium: "VSCodium",
-  unknown: "Editor",
-};
-
-export function formatHostLabel(host: Host): string {
-  return HOST_LABELS[host];
-}
-
-/**
- * Compose the provider list this extension sends to the daemon.
- *
- * - Cursor host: always `["cursor"]`. The probe is intentionally
- *   ignored so a stray `github.copilot-chat` install on Cursor cannot
- *   change the request shape — the v1.3.x byte-for-byte contract holds.
- * - Non-Cursor host with detected providers: returns the probe results
- *   as-is. Unknown providers (deferred ones from #295) survive — the
- *   daemon returns zero for them per #650 so over-reporting is safe.
- * - Non-Cursor host with empty probe: falls back to that host's first-
- *   class provider so the statusline has a definite scope rather than
- *   collapsing to the daemon's "all providers" default.
- */
-export function buildProviderList(
-  host: Host,
-  detectedProviders: readonly string[],
-): readonly string[] {
-  if (host === "cursor") return ["cursor"];
-  if (detectedProviders.length === 0) return [DEFAULT_PROVIDER_BY_HOST[host]];
-  return detectedProviders;
-}
+export const CURSOR_SURFACE = "cursor";
 
 /**
  * Pretty-print a provider name for tooltip rendering. Matches the
@@ -202,44 +132,6 @@ export function formatProviderName(provider: string): string {
         .split("_")
         .map((part) => (part.length > 0 ? part[0].toUpperCase() + part.slice(1) : part))
         .join(" ");
-  }
-}
-
-/**
- * Editor host this extension is running inside, derived from
- * `vscode.env.appName` at activation. Used to pick the default provider
- * scope and to drive host-aware copy in `buildStatusText` /
- * `buildTooltip` (siropkin/budi-cursor#26 — lockstep with budi-core
- * 8.4.0).
- *
- * - `cursor`   — Cursor (the original target host).
- * - `vscode`   — VS Code stable or Insiders.
- * - `vscodium` — VSCodium (open-source VS Code build).
- * - `unknown`  — appName matched none of the above; treat like `vscode`
- *                for default-provider purposes but keep the label honest
- *                so the welcome view / tooltip can flag it.
- */
-export type Host = "cursor" | "vscode" | "vscodium" | "unknown";
-
-/**
- * Map `vscode.env.appName` to a `Host` enum. Mappings are pinned to the
- * exact strings VS Code, VS Code Insiders, Cursor, and VSCodium ship in
- * `product.json`; anything else (forks, future Microsoft channels) falls
- * through to `unknown` so the caller can decide.
- */
-export function detectHost(appName: string | undefined | null): Host {
-  switch (appName) {
-    case "Cursor":
-      return "cursor";
-    case "Visual Studio Code":
-    case "Visual Studio Code - Insiders":
-    case "Visual Studio Code - Exploration":
-      return "vscode";
-    case "VSCodium":
-    case "VSCodium - Insiders":
-      return "vscodium";
-    default:
-      return "unknown";
   }
 }
 
@@ -336,12 +228,6 @@ export function deriveHealthState(
 interface ClickUrlOptions {
   cloudEndpoint: string;
   statusline: StatuslineData | null;
-  /**
-   * Editor host this extension is rendering inside. Threaded through for
-   * future host-aware click destinations (siropkin/budi-cursor#29); today
-   * every host opens the same Claude Code-shaped URL.
-   */
-  host?: Host;
 }
 
 /**
@@ -355,8 +241,7 @@ interface ClickUrlOptions {
  * status bar command switches to the in-editor welcome view instead of
  * calling this helper.
  */
-export function clickUrl({ cloudEndpoint, statusline, host = "cursor" }: ClickUrlOptions): string {
-  void host;
+export function clickUrl({ cloudEndpoint, statusline }: ClickUrlOptions): string {
   const base = cloudEndpoint.replace(/\/+$/, "");
   if (statusline && statusline.active_provider === CURSOR_PROVIDER) {
     return `${base}/dashboard/sessions`;
@@ -365,33 +250,33 @@ export function clickUrl({ cloudEndpoint, statusline, host = "cursor" }: ClickUr
 }
 
 /**
- * First line of the tooltip — names the host and, on non-Cursor hosts,
- * the single contributing provider when one is known. Multiple
- * contributing providers fall through to a host-only label so the
- * dedicated `Tracking: ...` line below carries the detail.
+ * First line of the tooltip — names the cursor surface and, when the
+ * daemon attributes a single non-Cursor sub-provider (e.g.
+ * Copilot-Chat-via-Cursor), parenthesizes it. Multiple contributing
+ * providers fall through to a surface-only label so the dedicated
+ * `Tracking: …` line below carries the detail.
  */
-export function buildTooltipHeader(host: Host, contributing: readonly string[]): string {
-  const hostLabel = formatHostLabel(host);
-  if (host === "cursor") return `budi — ${hostLabel} usage`;
-  if (contributing.length === 1) {
-    return `budi — ${hostLabel} usage (${formatProviderName(contributing[0])})`;
+export function buildTooltipHeader(contributing: readonly string[]): string {
+  if (contributing.length === 1 && contributing[0] !== CURSOR_PROVIDER) {
+    return `budi — Cursor usage (${formatProviderName(contributing[0])})`;
   }
-  return `budi — ${hostLabel} usage`;
+  return "budi — Cursor usage";
 }
 
 /**
- * Build a status bar tooltip that names the provider scope, names the
- * rolling windows, and points the user at `budi doctor` on trouble.
+ * Build a status bar tooltip that names the rolling windows and points
+ * the user at `budi doctor` on trouble. With `?surface=cursor` pinned
+ * on every analytics request, the tooltip no longer needs a host
+ * argument — the surface is, by construction, Cursor.
  */
 export function buildTooltip(
   state: HealthState,
   statusline: StatuslineData | null,
   cloudEndpoint: string,
-  host: Host = "cursor",
   health: DaemonHealth | null = null,
 ): string {
   const contributing = statusline?.contributing_providers ?? [];
-  const lines: string[] = [buildTooltipHeader(host, contributing), ""];
+  const lines: string[] = [buildTooltipHeader(contributing), ""];
   if (state === "firstRun") {
     lines.push("budi is not installed on this machine yet.");
     lines.push("Click to set it up in one step.");
@@ -425,24 +310,12 @@ export function buildTooltip(
   lines.push("");
   if (contributing.length > 1) {
     lines.push(`Tracking: ${contributing.map(formatProviderName).join(", ")}`);
-  } else if (host === "cursor") {
-    // Preserve the v1.3.x literal (lowercase wire name) on the Cursor host.
-    lines.push("Provider: cursor");
   } else {
-    const single =
-      statusline?.provider_scope ?? statusline?.active_provider ?? defaultProviderForHost(host);
-    lines.push(`Provider: ${formatProviderName(single)}`);
+    // Preserve the v1.3.x literal (lowercase wire name) on the Cursor surface.
+    lines.push("Provider: cursor");
   }
   if (state === "yellow") {
-    if (host === "cursor") {
-      lines.push("No recent Cursor traffic in the last 24h.");
-    } else {
-      const scope =
-        contributing.length === 1
-          ? formatProviderName(contributing[0])
-          : `${formatHostLabel(host)} AI`;
-      lines.push(`No recent ${scope} traffic in the last 24h.`);
-    }
+    lines.push("No recent Cursor traffic in the last 24h.");
   }
   lines.push("");
   const base = cloudEndpoint.replace(/\/+$/, "");
@@ -456,19 +329,8 @@ export function buildTooltip(
  * leading health glyph — the `HealthState` drives the copy variants
  * (`budi`, `budi · setup`, `budi · offline`) and the welcome-view
  * lifecycle, not a visual indicator.
- *
- * `host` is accepted but does not change the cost-line shape: the
- * shared status contract guarantees the daemon already filters costs to
- * the requested provider scope, so the on-bar copy stays byte-identical
- * across hosts. Host-aware copy in #29 lives in `buildTooltip`, which
- * has room for the longer label.
  */
-export function buildStatusText(
-  state: HealthState,
-  statusline: StatuslineData | null,
-  host: Host = "cursor",
-): string {
-  void host;
+export function buildStatusText(state: HealthState, statusline: StatuslineData | null): string {
   if (state === "firstRun") return "budi · setup";
   if (state === "unreachable") return "budi · offline";
   if (state === "version-stale") return "budi · update needed";
@@ -614,7 +476,7 @@ function fetchDaemonJson<T>(url: string): Promise<T | null> {
 }
 
 /**
- * Check daemon health and return version / api_version info.
+ * Check daemon health and return version / api_version / surfaces info.
  * Returns null if the daemon is unreachable.
  */
 export function fetchDaemonHealth(daemonUrl: string): Promise<DaemonHealth | null> {
@@ -622,49 +484,29 @@ export function fetchDaemonHealth(daemonUrl: string): Promise<DaemonHealth | nul
 }
 
 /**
- * Fetch statusline data from the daemon. `providers` is the list built
- * by `buildProviderList`; a single entry is encoded as plain
- * `?provider=<name>` (byte-identical to v1.3.x for the Cursor host),
- * and multiple entries are joined with `,` per the contract — the
- * repeated `?provider=a&provider=b` form is **not** supported by the
- * daemon (axum's `Query` extractor takes the last value only).
+ * Build the analytics request URL. v1.5.x hardcodes `?surface=cursor`
+ * on every request (siropkin/budi-cursor#55, paired with
+ * siropkin/budi#702/#714) — the daemon scopes correctly via the
+ * surface dimension, so this extension no longer sends the
+ * `?provider=cursor,copilot_chat` heuristic that v1.4.x used to
+ * approximate IDE scoping on the client side. The wire response is
+ * rendered as-is.
  *
- * `project_dir` is optional. When passed it unlocks `project_cost`
- * (unused on the statusline surface today) and gives the daemon the
+ * `project_dir` is optional. When passed it gives the daemon the
  * repo-local context it needs for accurate branch attribution.
- *
- * `surfaces` is optional and follows the same comma-list shape as
- * `providers` (siropkin/budi-cursor#50, paired with siropkin/budi#702).
- * An empty list omits the filter entirely so old daemons and the
- * `includeOtherSurfaces=true` opt-out remain byte-identical to the
- * pre-#50 wire shape.
  */
-export function buildStatuslineUrl(
-  daemonUrl: string,
-  providers: readonly string[],
-  projectDir?: string,
-  surfaces: readonly string[] = [],
-): string {
+export function buildStatuslineUrl(daemonUrl: string, projectDir?: string): string {
   const url = new URL("/analytics/statusline", daemonUrl);
-  if (providers.length > 0) {
-    url.searchParams.set("provider", providers.join(","));
-  }
+  url.searchParams.set("surface", CURSOR_SURFACE);
   if (projectDir) {
     url.searchParams.set("project_dir", projectDir);
-  }
-  if (surfaces.length > 0) {
-    url.searchParams.set("surface", surfaces.join(","));
   }
   return url.toString();
 }
 
 export function fetchStatusline(
   daemonUrl: string,
-  providers: readonly string[],
   projectDir?: string,
-  surfaces: readonly string[] = [],
 ): Promise<StatuslineData | null> {
-  return fetchDaemonJson<StatuslineData>(
-    buildStatuslineUrl(daemonUrl, providers, projectDir, surfaces),
-  );
+  return fetchDaemonJson<StatuslineData>(buildStatuslineUrl(daemonUrl, projectDir));
 }

@@ -3,6 +3,28 @@
 All notable changes to the `budi` Cursor extension are tracked here. The
 Cursor extension follows the main `siropkin/budi` release rhythm.
 
+## 1.5.1 — consume the v8.4.2 daemon contract
+
+_Closes `siropkin/budi-cursor#55`. Cuts the 1.5.x line of the host extension over to the surface dimension that v8.4.2 (`siropkin/budi#714`) ships: hardcodes `?surface=cursor` on every analytics request, drops the v1.4.x host-side workaround that filtered the wire response by `provider IN (cursor, copilot_chat)` heuristically, and lifts compiled `MIN_API_VERSION` to `3` (the value the daemon now advertises on `/health`). Promise was graceful degrade, not break-on-old-daemons: a 1.5.1 extension hitting an 8.4.1 daemon prints the existing `version-stale` warning (`budi · update needed`) instead of silently rendering zeros._
+
+### Changed
+
+- **`buildStatuslineUrl` hardcodes `?surface=cursor`** (`siropkin/budi-cursor#55`). The Cursor extension is, by construction, cursor-bound — there is no host detection that would pick anything else. Stops sending `?provider=…` entirely; the daemon's surface filter is the correct scoping primitive (`siropkin/budi#702`) and the wire response is rendered as-is. Old daemons silently drop unknown query params, so the request shape is byte-safe against a pre-#702 daemon.
+- **`MIN_API_VERSION` lifted from `1` to `3`** (`siropkin/budi-cursor#55`). v8.4.2 is the first daemon release that bumps `/health.api_version` past `1`; older daemons trip the gate and fall through `deriveHealthState` → `version-stale` → `budi · update needed`. Inline policy comment rewritten to mirror the cautionary tale of the v1.4.0 over-bump (`siropkin/budi-cursor#40`) without repeating it.
+- **`DaemonHealth.surfaces` exposed** for forward-compat. v8.4.2 advertises `["vscode","cursor","jetbrains","terminal","unknown"]` on `/health.surfaces`; v1.5.1 reads but does not use the array — the v1.6.x surface picker UI will iterate it. Older daemons omit the field; readers tolerate `undefined`.
+
+### Removed
+
+- **Sub-IDE / Code-fork detection** (`Host` enum, `detectHost`, `surfaceFilterForHost`, `SURFACE_BY_HOST`, `buildProviderList`, `DEFAULT_PROVIDER_BY_HOST`, `formatHostLabel`, `defaultProviderForHost`). All of it picked between `vscode` and `cursor` for the surface field; with `?surface=cursor` pinned, every branch except `cursor` is unreachable. Audit-and-remove parity with the JetBrains-side decision in `siropkin/budi-jetbrains#6`.
+- **`src/extensionsProbe.ts`** and its test. The probe enumerated `vscode.extensions.all` for non-Cursor AI extensions (Copilot Chat, Continue, Cline, Roo Code) so v1.4.x could ask the daemon for `?provider=copilot_chat,continue,…` on a VS Code host. With v1.5.1's hardcoded `?surface=cursor`, the daemon's parser-local attribution returns whatever sub-providers Cursor itself routed; no client-side enumeration is needed.
+- **`budi.includeOtherSurfaces` setting**. Was the v1.4.x opt-out for the cross-IDE aggregation. Superseded by the hardcoded `?surface=cursor` — v1.5.1 has no opt-out. The toggle pattern that `siropkin/budi-jetbrains#6` introduces (`Include other surfaces`) is the v1.6.x ask once both sides have shipped one round.
+
+### Notes
+
+- New URL builder + `MIN_API_VERSION` gate test in `src/budiClient.test.ts` pin the v8.4.2 wire shape: `?surface=cursor` always present, `?provider=` never sent, `MIN_API_VERSION === 3`, `version-stale` against `api_version: 1`, `green/yellow` against `api_version: 3`. Parity with `siropkin/budi-jetbrains#6` v0.1 acceptance.
+- Welcome-view copy is now Cursor-only (matches `SOUL.md` framing). `renderHtml` no longer takes a `host` argument; the v1.4.0 host-aware variants (`Shows your Copilot Chat spend`, etc.) are gone with the rest of the multi-host plumbing.
+- No surface picker UI yet (that is the v1.6.x ask); no surface-aware status-bar copy (the user is by-construction host-bound, so the host-scoping is invisible). Multi-provider Copilot-Chat-via-Cursor sub-attribution is consumed unchanged from the daemon.
+
 ## 1.5.0 — surface filter, actionable upgrade prompt, and security hardening
 
 _Bundles the post-1.4.1 work tracked in `siropkin/budi-cursor#42`–`#45`, `#50`, and `#51`. Two user-visible improvements (per-host surface filtering, actionable copy when the daemon api_version is stale) ride alongside four security fixes that close drive-by primitives a malicious repo could abuse via `.vscode/settings.json`. No data-contract change with the daemon — `?surface=<host>` and the existing `?provider=…` shape coexist, and the extension still runs against any 8.4.x daemon without modification._
