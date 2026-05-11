@@ -3,6 +3,14 @@
 All notable changes to the `budi` Cursor extension are tracked here. The
 Cursor extension follows the main `siropkin/budi` release rhythm.
 
+## 1.5.2 — simpler marketplace description
+
+_Tightens the `package.json` `description` field so the marketplace summary fits on one short line and points at the budi website. Pure copy change — no runtime behavior, daemon contract, or settings shape touched._
+
+### Changed
+
+- **`package.json` `description` shortened** to one sentence and includes `https://getbudi.dev` so the marketplace listing has a discoverable link to the project home. Drops the secondary "guide you through the install" sentence — the first-run flow is already documented in the README and rendered by the welcome view, so the marketplace summary doesn't need to repeat it.
+
 ## 1.5.1 — consume the v8.4.2 daemon contract
 
 _Closes `siropkin/budi-cursor#55`. Cuts the 1.5.x line of the host extension over to the surface dimension that v8.4.2 (`siropkin/budi#714`) ships: hardcodes `?surface=cursor` on every analytics request, drops the v1.4.x host-side workaround that filtered the wire response by `provider IN (cursor, copilot_chat)` heuristically, and lifts compiled `MIN_API_VERSION` to `3` (the value the daemon now advertises on `/health`). Promise was graceful degrade, not break-on-old-daemons: a 1.5.1 extension hitting an 8.4.1 daemon prints the existing `version-stale` warning (`budi · update needed`) instead of silently rendering zeros._
