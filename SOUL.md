@@ -12,7 +12,7 @@ This repo is **presentation only**. It does not touch SQLite, does not compute c
 | **budi-cursor** | **this repo** (`siropkin/budi-cursor`) | VS Code/Cursor extension (TypeScript). Renders what the daemon returns. |
 | **budi-cloud** | [`siropkin/budi-cloud`](https://github.com/siropkin/budi-cloud) | Next.js + Supabase cloud dashboard at `app.getbudi.dev`. Unrelated to this extension. |
 
-Repo-split boundaries are pinned by [ADR-0086](https://github.com/siropkin/budi/blob/main/docs/adr/0086-extraction-boundaries.md) in the main repo — read it before crossing boundaries.
+Repo-split boundaries are pinned by ADR-0086 in the main repo (`siropkin/budi`) — read it before crossing boundaries.
 
 ## Build & test
 
