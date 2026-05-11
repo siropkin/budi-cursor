@@ -122,5 +122,7 @@ The local daemon is older than this extension's required `api_version`. Run `bud
 ## Ecosystem
 
 - **[budi](https://github.com/siropkin/budi)** — Rust daemon + CLI (required).
+- **[budi-jetbrains](https://github.com/siropkin/budi-jetbrains)** — JetBrains IDE plugin sibling.
 - **[budi-cloud](https://github.com/siropkin/budi-cloud)** — Cloud dashboard and ingest API.
+- **[homebrew-budi](https://github.com/siropkin/homebrew-budi)** — Homebrew tap for the `budi` CLI.
 - **[getbudi.dev](https://github.com/siropkin/getbudi.dev)** — Public marketing site.
