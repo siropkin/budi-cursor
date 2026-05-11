@@ -9,8 +9,11 @@ This repo is **presentation only**. It does not touch SQLite, does not compute c
 | Product | Repo | Role |
 |---------|------|------|
 | **budi-core** | [`siropkin/budi`](https://github.com/siropkin/budi) | Rust: daemon, CLI, transcript tailer, all business logic. Owns SQLite. |
-| **budi-cursor** | **this repo** (`siropkin/budi-cursor`) | VS Code/Cursor extension (TypeScript). Renders what the daemon returns. |
+| **budi-cursor** | **this repo** (`siropkin/budi-cursor`) | VS Code / Cursor extension (TypeScript). Renders what the daemon returns. |
+| **budi-jetbrains** | [`siropkin/budi-jetbrains`](https://github.com/siropkin/budi-jetbrains) | Sibling JetBrains IDE plugin. Same status contract, different host. |
 | **budi-cloud** | [`siropkin/budi-cloud`](https://github.com/siropkin/budi-cloud) | Next.js + Supabase cloud dashboard at `app.getbudi.dev`. Unrelated to this extension. |
+| **homebrew-budi** | [`siropkin/homebrew-budi`](https://github.com/siropkin/homebrew-budi) | Homebrew tap for the `budi` CLI / daemon. |
+| **getbudi.dev** | [`siropkin/getbudi.dev`](https://github.com/siropkin/getbudi.dev) | Public marketing site at `getbudi.dev`. |
 
 Repo-split boundaries are pinned by ADR-0086 in the main repo (`siropkin/budi`) — read it before crossing boundaries.
 
