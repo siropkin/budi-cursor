@@ -1,7 +1,7 @@
 {
   "name": "budi",
   "displayName": "budi — AI Coding Cost Tracker",
-  "description": "Cursor status bar for budi. Shows your Cursor spend over the last 1d / 7d / 30d, mirroring the Claude Code statusline. If you don't have budi installed yet, the extension will guide you through the install.",
+  "description": "A quiet status bar item for VS Code and Cursor that shows your AI coding spend over the last 1 day / 7 days / 30 days, scoped to the IDE you're working in. If you don't have budi installed yet, the extension will guide you through the install.",
   "version": "1.5.1",
   "publisher": "siropkin",
   "license": "MIT",
@@ -73,7 +73,7 @@
           "default": "https://app.getbudi.dev",
           "pattern": "^https://([a-z0-9-]+\\.)*getbudi\\.dev(:\\d+)?(/.*)?$",
           "patternErrorMessage": "budi.cloudEndpoint must be an https URL on getbudi.dev (or a subdomain). Off-domain values are ignored at runtime to prevent phishing.",
-          "description": "Cloud dashboard URL opened when the status bar item is clicked. Must be an https URL on getbudi.dev — off-domain overrides are ignored. Matches the Claude Code statusline click-through."
+          "description": "Cloud dashboard URL opened when the status bar item is clicked. Must be an https URL on getbudi.dev — off-domain overrides are ignored."
         },
         "budi.suppressUpdatePrompt": {
           "type": "boolean",

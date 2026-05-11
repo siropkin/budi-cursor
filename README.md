@@ -1,12 +1,12 @@
 # budi — Cursor Extension
 
-A quiet status bar for budi that shows your **Cursor** spend over the last **1d / 7d / 30d** — byte-for-byte matching the Claude Code statusline.
+A quiet status bar item for VS Code and Cursor that shows your AI coding spend over the last **1 day / 7 days / 30 days**, scoped to the IDE you're working in.
 
 The extension is intentionally statusline-only:
 
 - **One status bar item.** No sidebar, no session list, no tips feed.
-- **Cursor-scoped.** Always shows Cursor IDE activity (the daemon attributes Copilot-Chat-via-Cursor here too). Never blends Claude Code, Codex CLI, or JetBrains usage — those have their own statuslines / extensions.
-- **Rolling 1d / 7d / 30d windows.** The same shape the Claude Code statusline uses, so every budi surface reads identically for its respective scope.
+- **IDE-scoped.** Always shows activity charged through the IDE you're using (Cursor, including Copilot-Chat-via-Cursor when present, or VS Code with Copilot Chat). If you use other AI tools outside the editor, those have their own surfaces; this extension does not blend them in.
+- **Rolling 1d / 7d / 30d windows.** Three numbers, always current, always for this IDE.
 
 ## Status bar at a glance
 
@@ -24,7 +24,7 @@ budi · $2.34 1d · $12.50 7d · $48.10 30d
 
 Hover the item to see the rolling-window breakdown. The header reads `budi — Cursor usage`; if the daemon attributes a single non-Cursor sub-provider (e.g. Copilot-Chat-via-Cursor) it is parenthesised, and a `Tracking: …` line lists each contributing provider when more than one is in scope.
 
-Click the item to open the cloud dashboard. When there is an active session it opens `<cloud>/dashboard/sessions`; otherwise it opens `<cloud>/dashboard` — the same click-through behaviour as the Claude Code statusline.
+Click the item to open the budi cloud dashboard. When there is an active session it opens `<cloud>/dashboard/sessions` so you land on the live session; otherwise it opens `<cloud>/dashboard` for the rolling-window view.
 
 ## Prerequisites
 
@@ -89,19 +89,18 @@ Reload your editor: **Cmd+Shift+P** → **Developer: Reload Window**.
 
 ## Configuration
 
-| Setting                  | Default                   | Description                                                              |
-| ------------------------ | ------------------------- | ------------------------------------------------------------------------ |
-| `budi.pollingIntervalMs` | `15000`                   | How often to refresh the status bar (ms).                                |
-| `budi.daemonUrl`         | `http://127.0.0.1:7878`   | Local daemon base URL.                                                   |
-| `budi.cloudEndpoint`     | `https://app.getbudi.dev` | Cloud dashboard opened on click. Matches the Claude Code statusline URL. |
+| Setting                  | Default                   | Description                                                     |
+| ------------------------ | ------------------------- | --------------------------------------------------------------- |
+| `budi.pollingIntervalMs` | `15000`                   | How often to refresh the status bar (ms).                       |
+| `budi.daemonUrl`         | `http://127.0.0.1:7878`   | Local daemon base URL.                                          |
+| `budi.cloudEndpoint`     | `https://app.getbudi.dev` | Cloud dashboard URL opened when the status bar item is clicked. |
 
 ## How it works
 
 1. **Local transcript tailers (no proxy, no editor settings changes).** The budi daemon tails Cursor's local session files as they are written and reconciles cost/token totals from Cursor's own source on a pull cadence. All business logic — cost, classification, attribution — lives in the Rust daemon. Nothing is routed through an HTTP proxy and no editor base-URL override is involved.
 2. **Workspace signal.** The extension writes the active workspace path to `~/.local/share/budi/cursor-sessions.json` so the daemon can associate session activity with the workspace.
 3. **Cursor-scoped request.** The extension always asks the daemon for `?surface=cursor`, which scopes the response to activity routed through Cursor (including Copilot-Chat-via-Cursor when present). No client-side provider heuristic — the daemon's surface filter is the source of truth.
-4. **Shared status contract.** The response is the same rolling 1d / 7d / 30d shape the CLI statusline and the cloud dashboard use, so all three surfaces read identically.
-5. **No re-implementation of cost logic.** If Claude Code's statusline shows `$X 1d · $Y 7d · $Z 30d`, this extension shows the same thing scoped to Cursor.
+4. **Shared rolling-window shape.** The response is the rolling 1d / 7d / 30d shape the cloud dashboard also reads, so the number in the status bar and the number on the dashboard always agree for this IDE.
 
 ## Troubleshooting
 
