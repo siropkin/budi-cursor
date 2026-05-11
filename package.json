@@ -1,8 +1,8 @@
 {
   "name": "budi",
   "displayName": "budi — AI Coding Cost Tracker",
-  "description": "A quiet status bar item for VS Code and Cursor that shows your AI coding spend over the last 1 day / 7 days / 30 days, scoped to the IDE you're working in. If you don't have budi installed yet, the extension will guide you through the install.",
-  "version": "1.5.1",
+  "description": "Track your AI coding spend in the Cursor / VS Code status bar — 1d / 7d / 30d at a glance. Learn more at https://getbudi.dev",
+  "version": "1.5.2",
   "publisher": "siropkin",
   "license": "MIT",
   "icon": "assets/icon.png",
