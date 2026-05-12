@@ -5,11 +5,13 @@ import {
   DEFAULT_DAEMON_URL,
   HealthState,
   StatuslineData,
+  Surface,
   buildStatusText,
   buildTooltip,
   buildTooltipHeader,
   clickUrl,
   deriveHealthState,
+  detectSurface,
   fetchDaemonHealth,
   fetchStatusline,
   isAllowedCloudEndpoint,
@@ -49,6 +51,16 @@ export function activate(context: vscode.ExtensionContext): void {
 
   everSawDaemon = context.globalState.get<boolean>(EVER_SAW_DAEMON_KEY, false);
 
+  // Derive the wire surface from `vscode.env.appName` once at activation
+  // (siropkin/budi-cursor#64). `appName` is `"Cursor"` inside Cursor,
+  // `"Visual Studio Code"` (or `"... - Insiders"` / `"VSCodium"`) in VS
+  // Code. The value is byte-stable for the life of the extension host —
+  // there is no host-swap event to listen for — so a single read here
+  // is enough. We log it so a user reporting "the wrong totals are
+  // showing" can confirm the detection result without grepping vscode.env.
+  const surface: Surface = detectSurface(vscode.env.appName);
+  log.appendLine(`[budi] host appName=${JSON.stringify(vscode.env.appName)} → surface=${surface}`);
+
   const settings = vscode.workspace.getConfiguration("budi");
   let daemonUrl: string = readDaemonUrl(settings);
   let cloudEndpoint: string = readCloudEndpoint(settings);
@@ -78,7 +90,7 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(
     vscode.commands.registerCommand("budi.statusBarClick", () => {
       if (lastState === "firstRun") {
-        openWelcome(context, "needs-install", daemonUrl, cloudEndpoint);
+        openWelcome(context, "needs-install", daemonUrl, cloudEndpoint, surface);
         return;
       }
       const url = clickUrl({ cloudEndpoint, statusline: cachedStatusline });
@@ -96,14 +108,14 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(
     vscode.commands.registerCommand("budi.refreshStatus", () => {
       log.appendLine("[budi] manual refresh triggered");
-      requestRefresh(daemonUrl, cloudEndpoint, context);
+      requestRefresh(daemonUrl, cloudEndpoint, surface, context);
     }),
   );
 
   context.subscriptions.push(
     vscode.commands.registerCommand("budi.showWelcome", () => {
       const stage: WelcomeStage = everSawDaemon ? "needs-init" : "needs-install";
-      openWelcome(context, stage, daemonUrl, cloudEndpoint);
+      openWelcome(context, stage, daemonUrl, cloudEndpoint, surface);
     }),
   );
 
@@ -115,8 +127,8 @@ export function activate(context: vscode.ExtensionContext): void {
       cloudEndpoint = readCloudEndpoint(updated);
       dataPollInterval = readPollingInterval(updated);
       suppressUpdatePrompt = readSuppressUpdatePrompt(updated);
-      restartDataPoll(daemonUrl, cloudEndpoint, dataPollInterval, context);
-      requestRefresh(daemonUrl, cloudEndpoint, context);
+      restartDataPoll(daemonUrl, cloudEndpoint, surface, dataPollInterval, context);
+      requestRefresh(daemonUrl, cloudEndpoint, surface, context);
     }),
   );
 
@@ -132,13 +144,13 @@ export function activate(context: vscode.ExtensionContext): void {
       cloudEndpoint = readCloudEndpoint(updated);
       dataPollInterval = readPollingInterval(updated);
       suppressUpdatePrompt = readSuppressUpdatePrompt(updated);
-      restartDataPoll(daemonUrl, cloudEndpoint, dataPollInterval, context);
-      requestRefresh(daemonUrl, cloudEndpoint, context);
+      restartDataPoll(daemonUrl, cloudEndpoint, surface, dataPollInterval, context);
+      requestRefresh(daemonUrl, cloudEndpoint, surface, context);
     }),
   );
 
-  requestRefresh(daemonUrl, cloudEndpoint, context);
-  startDataPoll(daemonUrl, cloudEndpoint, dataPollInterval, context);
+  requestRefresh(daemonUrl, cloudEndpoint, surface, context);
+  startDataPoll(daemonUrl, cloudEndpoint, surface, dataPollInterval, context);
 }
 
 // Workspace-trust gate (siropkin/budi-cursor#45). In an untrusted
@@ -215,22 +227,24 @@ export function deactivate(): void {
 function startDataPoll(
   daemonUrl: string,
   cloudEndpoint: string,
+  surface: Surface,
   intervalMs: number,
   context: vscode.ExtensionContext,
 ): void {
   dataPollTimer = setInterval(() => {
-    requestRefresh(daemonUrl, cloudEndpoint, context);
+    requestRefresh(daemonUrl, cloudEndpoint, surface, context);
   }, intervalMs);
 }
 
 function restartDataPoll(
   daemonUrl: string,
   cloudEndpoint: string,
+  surface: Surface,
   intervalMs: number,
   context: vscode.ExtensionContext,
 ): void {
   if (dataPollTimer) clearInterval(dataPollTimer);
-  startDataPoll(daemonUrl, cloudEndpoint, intervalMs, context);
+  startDataPoll(daemonUrl, cloudEndpoint, surface, intervalMs, context);
 }
 
 /**
@@ -308,6 +322,7 @@ function showUpgradeCommand(health: DaemonHealth): void {
 function requestRefresh(
   daemonUrl: string,
   cloudEndpoint: string,
+  surface: Surface,
   context: vscode.ExtensionContext,
 ): void {
   pendingRefreshDaemonUrl = daemonUrl;
@@ -318,14 +333,14 @@ function requestRefresh(
       while (pendingRefreshDaemonUrl) {
         const nextDaemonUrl = pendingRefreshDaemonUrl;
         pendingRefreshDaemonUrl = undefined;
-        await refreshData(nextDaemonUrl, cloudEndpoint, context);
+        await refreshData(nextDaemonUrl, cloudEndpoint, surface, context);
       }
     } catch (err) {
       log.appendLine(`[budi] refresh error: ${err}`);
     } finally {
       refreshInFlight = false;
       if (pendingRefreshDaemonUrl) {
-        requestRefresh(pendingRefreshDaemonUrl, cloudEndpoint, context);
+        requestRefresh(pendingRefreshDaemonUrl, cloudEndpoint, surface, context);
       }
     }
   })();
@@ -334,6 +349,7 @@ function requestRefresh(
 async function refreshData(
   daemonUrl: string,
   cloudEndpoint: string,
+  surface: Surface,
   context: vscode.ExtensionContext,
 ): Promise<void> {
   const folders = vscode.workspace.workspaceFolders;
@@ -342,7 +358,7 @@ async function refreshData(
 
   const [health, statusline] = await Promise.all([
     fetchDaemonHealth(daemonUrl),
-    fetchStatusline(daemonUrl, cwd),
+    fetchStatusline(daemonUrl, surface, cwd),
   ]);
   cachedStatusline = statusline;
 
@@ -436,12 +452,13 @@ function openWelcome(
   stage: WelcomeStage,
   daemonUrl: string,
   cloudEndpoint: string,
+  surface: Surface,
 ): void {
   showWelcome(context, stage, {
     onRecheck: async () => {
       log.appendLine("[budi] welcome-view recheck triggered");
       // A single eager poll; the normal loop keeps going underneath.
-      await refreshData(daemonUrl, cloudEndpoint, context);
+      await refreshData(daemonUrl, cloudEndpoint, surface, context);
     },
   });
 }
