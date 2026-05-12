@@ -3,6 +3,21 @@
 All notable changes to the `budi` Cursor extension are tracked here. The
 Cursor extension follows the main `siropkin/budi` release rhythm.
 
+## 1.5.3 — detect host surface from `vscode.env.appName`
+
+_Closes `siropkin/budi-cursor#64`. The same VSIX has been published to both the VS Code Marketplace and Open VSX since v1.x, but v1.5.x pinned `?surface=cursor` on every analytics request — so a VS Code install rendered Cursor totals (typically zero) instead of the user's actual VS Code activity. The daemon already advertises `vscode` on `/health.surfaces` and returns clean per-surface data; the gap was entirely on the extension side._
+
+### Changed
+
+- **Wire surface derived from `vscode.env.appName` at activation** (`siropkin/budi-cursor#64`). `"Cursor"` → `surface=cursor`, `"Visual Studio Code"` / `"Visual Studio Code - Insiders"` / `"VSCodium"` → `surface=vscode`, anything else → `surface=unknown` (the daemon tolerates the value per `siropkin/budi#702` acceptance). VS Code installs now hit `/analytics/statusline?surface=vscode` and render their own host's totals; Cursor keeps `surface=cursor` (no regression).
+- **`buildStatuslineUrl` / `fetchStatusline` take an explicit `surface` argument.** Replaces the `CURSOR_SURFACE` module-level constant — the host is read once at activation and threaded through the refresh / poll chain. New `detectSurface(appName)` and `Surface` type are exported for tests and any future surface-picker UI to share. The resolved value is logged to the `budi` output channel (`[budi] host appName=… → surface=…`) so a user reporting "wrong totals" can confirm detection without grepping `vscode.env`.
+
+### Notes
+
+- Unit tests cover all three surface branches (`cursor` / `vscode` / `unknown`) plus the wire-level forwarding so a VS Code install can no longer regress to `surface=cursor` silently.
+- The `cursor-sessions.json` / `cursor-onboarding.json` filenames stay as-is for this release. Renaming them per-surface depends on how the daemon's workspace resolver keys per-surface signal files, owned by a companion ticket in `siropkin/budi`.
+- No data-contract change with the daemon — `?surface=vscode` was already in the v8.4.2 contract; this release just stops the extension from hardcoding the cursor value over it.
+
 ## 1.5.2 — simpler marketplace description
 
 _Tightens the `package.json` `description` field so the marketplace summary fits on one short line and points at the budi website. Pure copy change — no runtime behavior, daemon contract, or settings shape touched._
