@@ -10,10 +10,10 @@ import {
   buildTooltipHeader,
   clickUrl,
   CURSOR_PROVIDER,
-  CURSOR_SURFACE,
   DEFAULT_CLOUD_ENDPOINT,
   DEFAULT_DAEMON_URL,
   deriveHealthState,
+  detectSurface,
   fetchDaemonHealth,
   fetchStatusline,
   formatCostLine,
@@ -333,26 +333,62 @@ describe("formatProviderName", () => {
   });
 });
 
-describe("buildStatuslineUrl (siropkin/budi-cursor#55)", () => {
-  it("hardcodes ?surface=cursor on every request — daemon scopes correctly via surface dimension", () => {
-    expect(buildStatuslineUrl("http://127.0.0.1:7878")).toBe(
+describe("detectSurface (siropkin/budi-cursor#64)", () => {
+  it("maps the Cursor host appName to surface=cursor", () => {
+    expect(detectSurface("Cursor")).toBe("cursor");
+  });
+
+  it("maps every VS Code host variant to surface=vscode", () => {
+    expect(detectSurface("Visual Studio Code")).toBe("vscode");
+    expect(detectSurface("Visual Studio Code - Insiders")).toBe("vscode");
+    expect(detectSurface("VSCodium")).toBe("vscode");
+  });
+
+  it("falls back to surface=unknown for unrecognized hosts — the daemon's /health.surfaces includes `unknown` so the request stays well-formed", () => {
+    expect(detectSurface("")).toBe("unknown");
+    expect(detectSurface("Windsurf")).toBe("unknown");
+    expect(detectSurface("Some Future Fork")).toBe("unknown");
+  });
+
+  it("is case-sensitive — matches the exact appName values VS Code/Cursor advertise", () => {
+    // `vscode.env.appName` is a fixed byte-stable string per host, not a
+    // user-localized label, so we match exactly. A lowercase miss should
+    // bucket to `unknown` rather than silently aliasing.
+    expect(detectSurface("cursor")).toBe("unknown");
+    expect(detectSurface("visual studio code")).toBe("unknown");
+  });
+});
+
+describe("buildStatuslineUrl (siropkin/budi-cursor#64)", () => {
+  it("sends ?surface=cursor when called with the cursor surface", () => {
+    expect(buildStatuslineUrl("http://127.0.0.1:7878", "cursor")).toBe(
       "http://127.0.0.1:7878/analytics/statusline?surface=cursor",
     );
   });
 
-  it("surface value matches the exported CURSOR_SURFACE constant", () => {
-    expect(CURSOR_SURFACE).toBe("cursor");
-    expect(buildStatuslineUrl("http://127.0.0.1:7878")).toContain(`surface=${CURSOR_SURFACE}`);
+  it("sends ?surface=vscode when called with the vscode surface — fixes the v1.5.x cursor-only bug (#64)", () => {
+    expect(buildStatuslineUrl("http://127.0.0.1:7878", "vscode")).toBe(
+      "http://127.0.0.1:7878/analytics/statusline?surface=vscode",
+    );
+  });
+
+  it("sends ?surface=unknown when the host cannot be classified — daemon tolerates the value per siropkin/budi#702 acceptance", () => {
+    expect(buildStatuslineUrl("http://127.0.0.1:7878", "unknown")).toBe(
+      "http://127.0.0.1:7878/analytics/statusline?surface=unknown",
+    );
   });
 
   it("appends project_dir after the surface filter when passed", () => {
-    expect(buildStatuslineUrl("http://127.0.0.1:7878", "/work/budi")).toBe(
+    expect(buildStatuslineUrl("http://127.0.0.1:7878", "cursor", "/work/budi")).toBe(
       "http://127.0.0.1:7878/analytics/statusline?surface=cursor&project_dir=%2Fwork%2Fbudi",
+    );
+    expect(buildStatuslineUrl("http://127.0.0.1:7878", "vscode", "/work/budi")).toBe(
+      "http://127.0.0.1:7878/analytics/statusline?surface=vscode&project_dir=%2Fwork%2Fbudi",
     );
   });
 
   it("does NOT send ?provider= — the v1.4.x host-side workaround that filtered on `provider IN (cursor, copilot_chat)` is removed (siropkin/budi-cursor#55)", () => {
-    const url = buildStatuslineUrl("http://127.0.0.1:7878", "/work/budi");
+    const url = buildStatuslineUrl("http://127.0.0.1:7878", "cursor", "/work/budi");
     expect(url).not.toContain("provider=");
   });
 });
@@ -619,18 +655,29 @@ describe("fetchDaemonJson defenses (#44)", () => {
       res.writeHead(200, { "Content-Type": "application/json" });
       res.write(`{"cost_1d":1,"x":"${"B".repeat(96 * 1024)}`);
     };
-    const result = await fetchStatusline(baseUrl);
+    const result = await fetchStatusline(baseUrl, "cursor");
     expect(result).toBeNull();
   });
 
-  it("fetchStatusline pins ?surface=cursor on the wire", async () => {
+  it("fetchStatusline forwards the cursor surface on the wire", async () => {
     let receivedUrl: string | undefined;
     handler = (req, res) => {
       receivedUrl = req.url;
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ cost_1d: 0, cost_7d: 0, cost_30d: 0 }));
     };
-    await fetchStatusline(baseUrl);
+    await fetchStatusline(baseUrl, "cursor");
     expect(receivedUrl).toBe("/analytics/statusline?surface=cursor");
+  });
+
+  it("fetchStatusline forwards the vscode surface on the wire — VS Code host reads vscode totals, not cursor totals (#64)", async () => {
+    let receivedUrl: string | undefined;
+    handler = (req, res) => {
+      receivedUrl = req.url;
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ cost_1d: 0, cost_7d: 0, cost_30d: 0 }));
+    };
+    await fetchStatusline(baseUrl, "vscode");
+    expect(receivedUrl).toBe("/analytics/statusline?surface=vscode");
   });
 });

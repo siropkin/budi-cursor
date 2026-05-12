@@ -88,18 +88,43 @@ export const MIN_API_VERSION = 3;
 export const CURSOR_PROVIDER = "cursor";
 
 /**
- * The surface this extension always sends on analytics requests
- * (siropkin/budi#702). The Cursor extension is, by construction,
- * cursor-bound — there is no host detection that would pick anything
- * else. JetBrains and (eventual) VS Code-native extensions ship
- * separately and pin their own surface (`siropkin/budi-jetbrains#6`
- * makes the parallel decision for `jetbrains`).
+ * Wire-level surface values this extension may send on analytics
+ * requests (siropkin/budi#702). Matches the value space the daemon
+ * advertises on `/health.surfaces` for v8.4.2+.
  *
- * Old daemons (pre-#702) silently drop unknown query params, so
- * sending the filter is byte-safe against them — see #702 acceptance
- * for the unknown-surface tolerance contract.
+ * The extension runs in both Cursor and VS Code (this VSIX is published
+ * to both the VS Code Marketplace and Open VSX — SOUL.md §"Install").
+ * The surface is derived at activation from `vscode.env.appName` via
+ * `detectSurface` and threaded through every analytics request, so the
+ * daemon scopes correctly per host (siropkin/budi-cursor#64).
  */
-export const CURSOR_SURFACE = "cursor";
+export type Surface = "cursor" | "vscode" | "unknown";
+
+/**
+ * Derive the wire surface from `vscode.env.appName`
+ * (siropkin/budi-cursor#64).
+ *
+ * - `"Cursor"` → `cursor`
+ * - `"Visual Studio Code"` / `"Visual Studio Code - Insiders"` /
+ *   `"VSCodium"` → `vscode`
+ * - anything else → `unknown` (the daemon tolerates unknown surfaces
+ *   per siropkin/budi#702 acceptance — readings just bucket into the
+ *   `unknown` slot rather than failing the request)
+ *
+ * Old daemons (pre-#702) silently drop the `?surface=` query param, so
+ * sending any value is byte-safe against them.
+ */
+export function detectSurface(appName: string): Surface {
+  if (appName === "Cursor") return "cursor";
+  if (
+    appName === "Visual Studio Code" ||
+    appName === "Visual Studio Code - Insiders" ||
+    appName === "VSCodium"
+  ) {
+    return "vscode";
+  }
+  return "unknown";
+}
 
 /**
  * Pretty-print a provider name for tooltip rendering. Matches the
@@ -484,20 +509,29 @@ export function fetchDaemonHealth(daemonUrl: string): Promise<DaemonHealth | nul
 }
 
 /**
- * Build the analytics request URL. v1.5.x hardcodes `?surface=cursor`
- * on every request (siropkin/budi-cursor#55, paired with
- * siropkin/budi#702/#714) — the daemon scopes correctly via the
- * surface dimension, so this extension no longer sends the
- * `?provider=cursor,copilot_chat` heuristic that v1.4.x used to
- * approximate IDE scoping on the client side. The wire response is
- * rendered as-is.
+ * Build the analytics request URL. The surface is derived from the
+ * host (`detectSurface(vscode.env.appName)`) at activation and threaded
+ * through here so the daemon scopes correctly per host — Cursor reads
+ * cursor totals, VS Code reads vscode totals
+ * (siropkin/budi-cursor#64). This replaces the v1.5.x hardcoded
+ * `?surface=cursor` (siropkin/budi-cursor#55) which rendered cursor
+ * totals even when the extension was installed in VS Code.
+ *
+ * The extension no longer sends the `?provider=cursor,copilot_chat`
+ * heuristic that v1.4.x used to approximate IDE scoping on the client
+ * side — surface-based scoping (siropkin/budi#702) is the daemon's
+ * job, and the wire response is rendered as-is.
  *
  * `project_dir` is optional. When passed it gives the daemon the
  * repo-local context it needs for accurate branch attribution.
  */
-export function buildStatuslineUrl(daemonUrl: string, projectDir?: string): string {
+export function buildStatuslineUrl(
+  daemonUrl: string,
+  surface: Surface,
+  projectDir?: string,
+): string {
   const url = new URL("/analytics/statusline", daemonUrl);
-  url.searchParams.set("surface", CURSOR_SURFACE);
+  url.searchParams.set("surface", surface);
   if (projectDir) {
     url.searchParams.set("project_dir", projectDir);
   }
@@ -506,7 +540,8 @@ export function buildStatuslineUrl(daemonUrl: string, projectDir?: string): stri
 
 export function fetchStatusline(
   daemonUrl: string,
+  surface: Surface,
   projectDir?: string,
 ): Promise<StatuslineData | null> {
-  return fetchDaemonJson<StatuslineData>(buildStatuslineUrl(daemonUrl, projectDir));
+  return fetchDaemonJson<StatuslineData>(buildStatuslineUrl(daemonUrl, surface, projectDir));
 }
