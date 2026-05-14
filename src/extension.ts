@@ -273,10 +273,7 @@ function restartDataPoll(
  * managed daemons), but the bar copy and tooltip still surface the
  * stale-version state.
  */
-function maybeShowVersionStaleToast(
-  health: DaemonHealth,
-  context: vscode.ExtensionContext,
-): void {
+function maybeShowVersionStaleToast(health: DaemonHealth, context: vscode.ExtensionContext): void {
   if (!shouldShowVersionStaleToast(health, lastWarnedStaleSignature)) return;
   const signature = versionStaleSignature(health);
   lastWarnedStaleSignature = signature;
