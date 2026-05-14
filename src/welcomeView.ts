@@ -1,10 +1,7 @@
 import * as vscode from "vscode";
 
-import {
-  InstallCommand,
-  initHandoffCommandFor,
-  installCommandForPlatform,
-} from "./installCommands";
+import type { InstallCommand } from "./installCommands";
+import { initHandoffCommandFor, installCommandForPlatform } from "./installCommands";
 import { recordCounterEvent } from "./onboardingCounters";
 
 /**
