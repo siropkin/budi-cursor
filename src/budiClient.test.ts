@@ -29,14 +29,11 @@ import {
 } from "./budiClient";
 
 describe("resolveCosts", () => {
-  it("prefers the canonical rolling fields (cost_1d/7d/30d)", () => {
+  it("reads the canonical rolling fields (cost_1d/7d/30d)", () => {
     const data: StatuslineData = {
       cost_1d: 1.23,
       cost_7d: 4.56,
       cost_30d: 7.89,
-      today_cost: 99,
-      week_cost: 99,
-      month_cost: 99,
     };
     const resolved = resolveCosts(data);
     expect(resolved).toEqual({
@@ -46,24 +43,25 @@ describe("resolveCosts", () => {
     });
   });
 
-  it("falls back to the 8.0 aliases when the daemon predates #224", () => {
-    const data: StatuslineData = {
-      today_cost: 2,
-      week_cost: 10,
-      month_cost: 40,
-    };
-    const resolved = resolveCosts(data);
-    expect(resolved.cost1d).toBe(2);
-    expect(resolved.cost7d).toBe(10);
-    expect(resolved.cost30d).toBe(40);
-  });
-
   it("defaults missing fields to 0", () => {
     const resolved = resolveCosts({});
     expect(resolved).toEqual({
       cost1d: 0,
       cost7d: 0,
       cost30d: 0,
+    });
+  });
+
+  it("defaults non-finite values to 0", () => {
+    const resolved = resolveCosts({
+      cost_1d: Number.NaN,
+      cost_7d: Number.POSITIVE_INFINITY,
+      cost_30d: 5,
+    });
+    expect(resolved).toEqual({
+      cost1d: 0,
+      cost7d: 0,
+      cost30d: 5,
     });
   });
 });
@@ -158,10 +156,6 @@ describe("deriveHealthState", () => {
 
   it("returns yellow when the daemon is healthy but the statusline call failed", () => {
     expect(deriveHealthState(healthyDaemon, null)).toBe("yellow");
-  });
-
-  it("falls back to legacy aliases for health detection against a pre-#224 daemon", () => {
-    expect(deriveHealthState(healthyDaemon, { today_cost: 2 })).toBe("green");
   });
 
   it("drops firstRun the moment the daemon answers — regardless of everSawDaemon history", () => {

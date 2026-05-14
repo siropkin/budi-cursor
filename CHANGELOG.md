@@ -12,6 +12,7 @@ _Internal cleanup work staged for the 1.6.0 "Hygiene & Cleanup" milestone. No us
 
 ### Maintenance
 
+- **Dropped the legacy `today_cost` / `week_cost` / `month_cost` fallback in `resolveCosts`** (`siropkin/budi-cursor#68`). Pre-#224 daemons emitted the deprecated 8.0 aliases as a one-release backward-compat shim; the canonical `cost_1d` / `cost_7d` / `cost_30d` fields have been the wire shape since `siropkin/budi#224` and are guaranteed by every daemon advertising `api_version >= 3`. Because `MIN_API_VERSION = 3` already gates out every daemon old enough to lack the canonical fields (they fall into the `version-stale` path and render `budi · update needed`), the alias fallback inside `resolveCosts` was already unreachable. Stripped the alias fields from `StatuslineData`, simplified `resolveCosts` to read the canonical shape only, and removed the two alias-fallback regression tests in `src/budiClient.test.ts`. `MIN_API_VERSION` unchanged (the canonical contract long predates the `api_version=3` floor). No user-visible runtime change.
 - **End-to-end code review of `src/` against SOUL.md** (`siropkin/budi-cursor#67` / PR #83). Audit-only, no behaviour change.
 - **Tightened TypeScript strict flags and ESLint rule set** (`siropkin/budi-cursor#82` / PR #84). Tighter compile-time checks; no shipped JS difference.
 - **Dead-code sweep** (`siropkin/budi-cursor#81` / PR #85). Dropped unused `eslint-config-prettier` dependency and the unused `InstallPlatform` export.
