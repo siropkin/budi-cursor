@@ -30,12 +30,6 @@ export interface StatuslineData {
    * input order. Tooltip "Tracking: …" line is rendered from this list.
    */
   contributing_providers?: string[];
-  // Deprecated 8.0 aliases. The daemon still populates these with the same
-  // rolling values for one release; removed in 9.0. Kept here so this
-  // extension still renders something useful against a pre-#224 daemon.
-  today_cost?: number;
-  week_cost?: number;
-  month_cost?: number;
 }
 
 export interface DaemonHealth {
@@ -169,23 +163,20 @@ function formatCost(dollars: number): string {
 }
 
 /**
- * Resolve the rolling cost fields, preferring the canonical
- * `cost_1d` / `cost_7d` / `cost_30d` shape and falling back to the
- * deprecated 8.0 aliases when talking to an older daemon.
- *
- * This mirrors `build_slot_values` in `budi-cli` so the two surfaces
- * stay byte-for-byte aligned during the 8.0 → 8.1 cutover.
+ * Resolve the rolling cost fields from the canonical
+ * `cost_1d` / `cost_7d` / `cost_30d` shape. Missing or non-finite values
+ * default to `0`. Pre-#224 daemons emitted the deprecated 8.0 aliases
+ * (`today_cost` / `week_cost` / `month_cost`); we no longer read them
+ * because `MIN_API_VERSION = 3` gates out every daemon old enough to
+ * lack the canonical fields.
  */
 export function resolveCosts(data: StatuslineData): ResolvedCosts {
-  const pick = (primary: number | undefined, legacy: number | undefined): number => {
-    if (typeof primary === "number" && Number.isFinite(primary)) return primary;
-    if (typeof legacy === "number" && Number.isFinite(legacy)) return legacy;
-    return 0;
-  };
+  const pick = (value: number | undefined): number =>
+    typeof value === "number" && Number.isFinite(value) ? value : 0;
   return {
-    cost1d: pick(data.cost_1d, data.today_cost),
-    cost7d: pick(data.cost_7d, data.week_cost),
-    cost30d: pick(data.cost_30d, data.month_cost),
+    cost1d: pick(data.cost_1d),
+    cost7d: pick(data.cost_7d),
+    cost30d: pick(data.cost_30d),
   };
 }
 

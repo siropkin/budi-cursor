@@ -57,7 +57,7 @@ No sidebar, no session list, no vitals grid, no tips feed. If real usage demands
 - HTTP: `GET http://127.0.0.1:7878/analytics/statusline?surface=<host>` (where `<host>` is `cursor` / `vscode` / `unknown`, derived from `vscode.env.appName` at activation per siropkin/budi-cursor#64; plus `project_dir` when a workspace is open) and `GET /health`. The extension never sends a `?provider=` filter — surface-based scoping (siropkin/budi#702) is the daemon's job, and the wire response is rendered as-is.
 - The response shape is the shared provider-scoped status contract pinned in [`docs/statusline-contract.md`](https://github.com/siropkin/budi/blob/main/docs/statusline-contract.md) in the main repo. The contract evolves in `siropkin/budi` first, then here — never the other way.
 - On startup, read `/health` and verify `api_version`. If the daemon is older than this extension's `MIN_API_VERSION`, show a one-time warning that points at `budi update` and keep polling. Do not crash.
-- Legacy aliases (`today_cost` / `week_cost` / `month_cost`) are still read as a fallback when the canonical `cost_1d` / `cost_7d` / `cost_30d` fields are missing. Drop the fallback the release after the main repo drops the aliases.
+- Only the canonical `cost_1d` / `cost_7d` / `cost_30d` fields are read. The deprecated 8.0 aliases (`today_cost` / `week_cost` / `month_cost`) are no longer parsed — `MIN_API_VERSION = 3` gates out every daemon old enough to lack the canonical fields, so the fallback was already unreachable. Restore the alias parse only if the canonical contract is ever revoked on the wire.
 
 ## Key files
 
