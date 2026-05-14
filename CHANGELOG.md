@@ -1,11 +1,24 @@
 # Changelog
 
 All notable changes to the `budi` Cursor extension are tracked here. The
-Cursor extension follows the main `siropkin/budi` release rhythm.
+Cursor extension follows the main `siropkin/budi` release rhythm. Header
+style follows [Keep a Changelog](https://keepachangelog.com/):
+`## [x.y.z] - YYYY-MM-DD`, newest first. Compare URLs are listed at the
+bottom of the file.
 
-## 1.5.3 — detect host surface from `vscode.env.appName`
+## [Unreleased]
 
-_Closes `siropkin/budi-cursor#64`. The same VSIX has been published to both the VS Code Marketplace and Open VSX since v1.x, but v1.5.x pinned `?surface=cursor` on every analytics request — so a VS Code install rendered Cursor totals (typically zero) instead of the user's actual VS Code activity. The daemon already advertises `vscode` on `/health.surfaces` and returns clean per-surface data; the gap was entirely on the extension side._
+_Internal cleanup work staged for the 1.6.0 "Hygiene & Cleanup" milestone. No user-visible runtime change since v1.5.3 — the status-bar copy, daemon contract, settings shape, and click-through URL are unchanged._
+
+### Maintenance
+
+- **End-to-end code review of `src/` against SOUL.md** (`siropkin/budi-cursor#67` / PR #83). Audit-only, no behaviour change.
+- **Tightened TypeScript strict flags and ESLint rule set** (`siropkin/budi-cursor#82` / PR #84). Tighter compile-time checks; no shipped JS difference.
+- **Dead-code sweep** (`siropkin/budi-cursor#81` / PR #85). Dropped unused `eslint-config-prettier` dependency and the unused `InstallPlatform` export.
+
+## [1.5.3] - 2026-05-12
+
+_Detected host surface from `vscode.env.appName`. Closes `siropkin/budi-cursor#64`. The same VSIX has been published to both the VS Code Marketplace and Open VSX since v1.x, but v1.5.x pinned `?surface=cursor` on every analytics request — so a VS Code install rendered Cursor totals (typically zero) instead of the user's actual VS Code activity. The daemon already advertises `vscode` on `/health.surfaces` and returns clean per-surface data; the gap was entirely on the extension side._
 
 ### Changed
 
@@ -18,17 +31,17 @@ _Closes `siropkin/budi-cursor#64`. The same VSIX has been published to both the 
 - The `cursor-sessions.json` / `cursor-onboarding.json` filenames stay as-is for this release. Renaming them per-surface depends on how the daemon's workspace resolver keys per-surface signal files, owned by a companion ticket in `siropkin/budi`.
 - No data-contract change with the daemon — `?surface=vscode` was already in the v8.4.2 contract; this release just stops the extension from hardcoding the cursor value over it.
 
-## 1.5.2 — simpler marketplace description
+## [1.5.2] - 2026-05-11
 
-_Tightens the `package.json` `description` field so the marketplace summary fits on one short line and points at the budi website. Pure copy change — no runtime behavior, daemon contract, or settings shape touched._
+_Simpler marketplace description. Tightened the `package.json` `description` field so the marketplace summary fits on one short line and points at the budi website. Pure copy change — no runtime behavior, daemon contract, or settings shape touched._
 
 ### Changed
 
 - **`package.json` `description` shortened** to one sentence and includes `https://getbudi.dev` so the marketplace listing has a discoverable link to the project home. Drops the secondary "guide you through the install" sentence — the first-run flow is already documented in the README and rendered by the welcome view, so the marketplace summary doesn't need to repeat it.
 
-## 1.5.1 — consume the v8.4.2 daemon contract
+## [1.5.1] - 2026-05-08
 
-_Closes `siropkin/budi-cursor#55`. Cuts the 1.5.x line of the host extension over to the surface dimension that v8.4.2 (`siropkin/budi#714`) ships: hardcodes `?surface=cursor` on every analytics request, drops the v1.4.x host-side workaround that filtered the wire response by `provider IN (cursor, copilot_chat)` heuristically, and lifts compiled `MIN_API_VERSION` to `3` (the value the daemon now advertises on `/health`). Promise was graceful degrade, not break-on-old-daemons: a 1.5.1 extension hitting an 8.4.1 daemon prints the existing `version-stale` warning (`budi · update needed`) instead of silently rendering zeros._
+_Consumed the v8.4.2 daemon contract. Closes `siropkin/budi-cursor#55`. Cut the 1.5.x line of the host extension over to the surface dimension that v8.4.2 (`siropkin/budi#714`) shipped: hardcoded `?surface=cursor` on every analytics request, dropped the v1.4.x host-side workaround that filtered the wire response by `provider IN (cursor, copilot_chat)` heuristically, and lifted compiled `MIN_API_VERSION` to `3` (the value the daemon now advertises on `/health`). Promise was graceful degrade, not break-on-old-daemons: a 1.5.1 extension hitting an 8.4.1 daemon printed the existing `version-stale` warning (`budi · update needed`) instead of silently rendering zeros._
 
 ### Changed
 
@@ -48,9 +61,9 @@ _Closes `siropkin/budi-cursor#55`. Cuts the 1.5.x line of the host extension ove
 - Welcome-view copy is now Cursor-only (matches `SOUL.md` framing). `renderHtml` no longer takes a `host` argument; the v1.4.0 host-aware variants (`Shows your Copilot Chat spend`, etc.) are gone with the rest of the multi-host plumbing.
 - No surface picker UI yet (that is the v1.6.x ask); no surface-aware status-bar copy (the user is by-construction host-bound, so the host-scoping is invisible). Multi-provider Copilot-Chat-via-Cursor sub-attribution is consumed unchanged from the daemon.
 
-## 1.5.0 — surface filter, actionable upgrade prompt, and security hardening
+## [1.5.0] - 2026-05-08
 
-_Bundles the post-1.4.1 work tracked in `siropkin/budi-cursor#42`–`#45`, `#50`, and `#51`. Two user-visible improvements (per-host surface filtering, actionable copy when the daemon api_version is stale) ride alongside four security fixes that close drive-by primitives a malicious repo could abuse via `.vscode/settings.json`. No data-contract change with the daemon — `?surface=<host>` and the existing `?provider=…` shape coexist, and the extension still runs against any 8.4.x daemon without modification._
+_Surface filter, actionable upgrade prompt, and security hardening. Bundled the post-1.4.1 work tracked in `siropkin/budi-cursor#42`–`#45`, `#50`, and `#51`. Two user-visible improvements (per-host surface filtering, actionable copy when the daemon api_version is stale) rode alongside four security fixes that closed drive-by primitives a malicious repo could abuse via `.vscode/settings.json`. No data-contract change with the daemon — `?surface=<host>` and the existing `?provider=…` shape coexisted, and the extension still ran against any 8.4.x daemon without modification._
 
 ### Added
 
@@ -74,9 +87,9 @@ _Bundles the post-1.4.1 work tracked in `siropkin/budi-cursor#42`–`#45`, `#50`
 - Status-bar copy gains exactly one new state — `budi · update needed` for stale daemons. The other four states (`budi`, `budi · setup`, `budi · offline`, `budi · $X 1d · $Y 7d · $Z 30d`) are unchanged.
 - The four security fixes are no-ops in the trusted single-developer-workspace flow that has been the default to date; they exist to make the "I just opened an unfamiliar repo" path safe rather than to change shipped behavior for existing installs.
 
-## 1.4.1 — fix `budi · offline` against released daemons
+## [1.4.1] - 2026-05-07
 
-_Hotfix on top of 1.4.0 (`siropkin/budi-cursor#40`). The 1.4.0 release bumped `MIN_API_VERSION` to `3` based on a comment that incorrectly claimed lockstep with budi-core 8.4.0 / `siropkin/budi#665`. The daemon's `API_VERSION` constant (`crates/budi-daemon/src/routes/hooks.rs`) was never bumped past `1` — and `siropkin/budi#665` is a Copilot Chat parser fix, unrelated to the wire version. Net effect: every released daemon (8.4.0, 8.4.1, …) failed the gate, so the status bar showed `budi · offline` even when the daemon was perfectly healthy._
+_Fixed `budi · offline` against released daemons. Hotfix on top of 1.4.0 (`siropkin/budi-cursor#40`). The 1.4.0 release bumped `MIN_API_VERSION` to `3` based on a comment that incorrectly claimed lockstep with budi-core 8.4.0 / `siropkin/budi#665`. The daemon's `API_VERSION` constant (`crates/budi-daemon/src/routes/hooks.rs`) was never bumped past `1` — and `siropkin/budi#665` is a Copilot Chat parser fix, unrelated to the wire version. Net effect: every released daemon (8.4.0, 8.4.1, …) failed the gate, so the status bar showed `budi · offline` even when the daemon was perfectly healthy._
 
 ### Fixed
 
@@ -88,9 +101,9 @@ _Hotfix on top of 1.4.0 (`siropkin/budi-cursor#40`). The 1.4.0 release bumped `M
 - After installing 1.4.1, reload the editor window. With a running 8.4.x daemon the status bar should flip from `budi · offline` to `budi · $X 1d · $Y 7d · $Z 30d`.
 - Follow-up worth filing separately: split the `red` health state into `unreachable` vs `version-stale` so the on-bar copy stops saying "offline" when the real story is a future version mismatch.
 
-## 1.4.0 — VS Code host support alongside Cursor
+## [1.4.0] - 2026-05-07
 
-_Closes the milestone tracked in `siropkin/budi-cursor#25` and lands in lockstep with budi-core 8.4.0 (`siropkin/budi#647`). Before this release the extension ran in VS Code but always asked budi-core for `?provider=cursor`, so a pure-VS Code user saw zero forever. v1.4.0 makes the extension genuinely multi-host: it detects the editor it is running in, enumerates installed AI extensions, and asks budi-core for a contributing-providers list rather than a hardcoded single provider._
+_VS Code host support alongside Cursor. Closed the milestone tracked in `siropkin/budi-cursor#25` and landed in lockstep with budi-core 8.4.0 (`siropkin/budi#647`). Before this release the extension ran in VS Code but always asked budi-core for `?provider=cursor`, so a pure-VS Code user saw zero forever. v1.4.0 made the extension genuinely multi-host: it detected the editor it was running in, enumerated installed AI extensions, and asked budi-core for a contributing-providers list rather than a hardcoded single provider._
 
 ### Added
 
@@ -112,9 +125,9 @@ _Closes the milestone tracked in `siropkin/budi-cursor#25` and lands in lockstep
 - Copilot Chat numbers depend on budi-core 8.4.0 (`siropkin/budi#651`); on older daemons the API-version warning fires and the statusline degrades gracefully rather than misreporting.
 - JetBrains support, Continue / Cline / Roo Code provider data, and the `budi-cursor` → `budi-vscode` repo rename are explicitly out of scope and tracked separately.
 
-## 1.3.3 — welcome-view copy alignment with getbudi.dev
+## [1.3.3] - 2026-05-05
 
-_Two small welcome-view fixes that landed after 1.3.2 (`siropkin/budi-cursor#20`, `siropkin/budi-cursor#21`). Both close gaps where the in-editor onboarding copy had drifted from the canonical install/contract story on getbudi.dev and the README._
+_Welcome-view copy alignment with getbudi.dev. Two small welcome-view fixes that landed after 1.3.2 (`siropkin/budi-cursor#20`, `siropkin/budi-cursor#21`). Both closed gaps where the in-editor onboarding copy had drifted from the canonical install/contract story on getbudi.dev and the README._
 
 ### Fixed
 
@@ -126,9 +139,9 @@ _Two small welcome-view fixes that landed after 1.3.2 (`siropkin/budi-cursor#20`
 - No behaviour change beyond copy/install-command rendering; the daemon contract, statusline shape, and click-through URL composition are unchanged.
 - Tests in `installCommands.test.ts` and `welcomeView.test.ts` were extended to assert each platform gets its own canonical command and label, with cross-checks that the macOS panel never leaks the Linux command and vice versa.
 
-## 1.3.2 — drop leading health-dot glyph from the status bar
+## [1.3.2] - 2026-04-23
 
-_Tracked in `siropkin/budi-cursor#18`. The colored circle prefix (🟢 / 🟡 / 🔴 / ⚪) was redundant — the tooltip and the copy already distinguish the three non-healthy states, and the glyph did not carry information the text lacked. Claude Code's CLI statusline does not show one either, so dropping it brings the Cursor surface in line with the reference surface._
+_Dropped the leading health-dot glyph from the status bar. Tracked in `siropkin/budi-cursor#18`. The colored circle prefix (🟢 / 🟡 / 🔴 / ⚪) was redundant — the tooltip and the copy already distinguished the three non-healthy states, and the glyph did not carry information the text lacked. Claude Code's CLI statusline does not show one either, so dropping it brought the Cursor surface in line with the reference surface._
 
 ### Changed
 
@@ -142,9 +155,9 @@ _Tracked in `siropkin/budi-cursor#18`. The colored circle prefix (🟢 / 🟡 / 
 - Tooltip copy, click-through URL, provider scoping, polling cadence, and the `/analytics/statusline?provider=cursor` + `/health` data contract are all unchanged.
 - No marketplace re-screenshot required beyond a single fresh status-bar shot; public-site sync on getbudi.dev picks up the shape change in the usual way.
 
-## 1.3.1 — user-visible extension copy cleanup
+## [1.3.1] - 2026-04-21
 
-_Tracked in `siropkin/budi-cursor#10` and `siropkin/budi-cursor#11`. Budi has no existing users, so cross-version narrative ("Starting with v1.1.0…", three stacked "What changed in 1.x" sections) and ADR/main-repo doc links on the marketplace README and welcome view were teaching a history the fresh installer never lived through and creating future broken-link liability._
+_User-visible extension copy cleanup. Tracked in `siropkin/budi-cursor#10` and `siropkin/budi-cursor#11`. Budi had no existing users, so cross-version narrative ("Starting with v1.1.0…", three stacked "What changed in 1.x" sections) and ADR/main-repo doc links on the marketplace README and welcome view were teaching a history the fresh installer never lived through and creating future broken-link liability._
 
 ### Changed
 
@@ -156,9 +169,9 @@ _Tracked in `siropkin/budi-cursor#10` and `siropkin/budi-cursor#11`. Budi has no
 
 - ADR/PR references remain load-bearing in `SOUL.md`, `AGENTS.md`, source doc-comments, and CI grep guards — intentionally untouched. The milestone is user-visible surfaces only.
 
-## 1.3.0 — 8.2 tailer alignment (drops proxy-era copy)
+## [1.3.0] - 2026-04-20
 
-_Tracked in `siropkin/budi#437`. Budi 8.2 retired the on-machine HTTP proxy (ADR-0089): live cost capture for every supported provider is now the local transcript tailer. The extension's marketplace listing, bundled README, and welcome view still described the dead 8.0/8.1 install flow and were misdirecting fresh users on the recommended install path._
+_8.2 tailer alignment — dropped proxy-era copy. Tracked in `siropkin/budi#437`. Budi 8.2 retired the on-machine HTTP proxy (ADR-0089): live cost capture for every supported provider is now the local transcript tailer. The extension's marketplace listing, bundled README, and welcome view still described the dead 8.0/8.1 install flow and were misdirecting fresh users on the recommended install path. This release also folded in the statusline-only surface, first-run welcome view, and onboarding entry-point work previously drafted as 1.1.0 / 1.2.0 in earlier drafts but never tagged from this repo._
 
 ### Changed
 
@@ -179,123 +192,33 @@ _Tracked in `siropkin/budi#437`. Budi 8.2 retired the on-machine HTTP proxy (ADR
 - No functional change: the daemon already stopped listening on the proxy port in the 8.2 release that shipped in `siropkin/budi` weeks ago. This ticket closes the documentation gap that was sending fresh Cursor-marketplace users down a dead path.
 - Cross-repo PR body references `siropkin/budi#437` for two-way navigability. Marketplace republish at `1.3.0` is part of closing that ticket.
 
-## 1.2.0 — 8.1 onboarding entry point
+## [1.0.1] - 2026-04-16
 
-_Tracked in `siropkin/budi#314`, governed by ADR-0088 §6 (onboarding scope is strictly local)._
+_Release hygiene._
 
-### Added
+### Fixed
 
-- **Welcome view for first-run users.** When the daemon is unreachable
-  AND this extension install has never seen the daemon healthy, the
-  status bar shows `⚪ budi · setup` (not `offline`) and clicking it
-  opens an in-editor welcome view. The view explains budi in one
-  sentence, shows the canonical install command for the user's
-  platform, and offers two actions:
-  - _Open Terminal With This Command_ — opens Cursor's integrated
-    terminal with the install command pre-filled (not executed).
-  - _I already installed it_ — force-rechecks `/health` and, on
-    success, swaps to a single `budi init && budi doctor` hand-off
-    action.
-  The view retires itself automatically on the first successful
-  Cursor-provider reading.
-- **New `firstRun` health state** distinct from `red`. Persisted via
-  `context.globalState`; once the daemon has been seen healthy on
-  this machine, the extension never returns to `firstRun` even if the
-  daemon later goes down.
-- **`Budi: Show Welcome / First-Run Setup` command** so users can
-  re-open the welcome view from the Command Palette at any time.
-- **Per-platform install commands** in `src/installCommands.ts`
-  mirror the main-repo README one-to-one — macOS/Linux uses
-  `curl -fsSL …/install-standalone.sh | bash`, Windows uses
-  `irm …/install-standalone.ps1 | iex`.
-- **Local-only onboarding counters** at
-  `~/.local/share/budi/cursor-onboarding.json` (v1 contract):
-  `welcome_view_impressions`, `open_terminal_clicks`,
-  `handoffs_completed`, plus coarse first/last ISO timestamps.
-  `budi doctor` reads this file so we can see how many
-  extension-first users reach a running daemon without any remote
-  telemetry.
-- **Marketplace description** now states explicitly that the
-  extension can guide users through the budi install if they don't
-  have it yet (acquisition-funnel polish).
+- Treated "already published" as a successful outcome in the release workflow to keep re-runs idempotent (`siropkin/budi-cursor#2`, `siropkin/budi-cursor#3`).
 
-### Changed
+## [1.0.0] - 2026-04-16
 
-- **Status bar command** is now `budi.statusBarClick` (dispatches to
-  the welcome view in `firstRun` mode, to the cloud click-through
-  otherwise). `budi.openDashboard` is still registered for users who
-  bind the command manually.
-
-### Notes
-
-- Privacy: the counters file is local-only and contains integer counts plus coarse first/last ISO timestamps — no prompts, no code, no outside-of-repo data. ADR-0083 limits are preserved.
-- The cursor-sessions.json v1 contract (ADR-0086 §3.4) is untouched.
-- Public-site sync for the new extension-first acquisition tile is threaded into `siropkin/budi#296`.
-
-## 1.1.0 — 8.1 statusline-only surface
-
-_Tracked in `siropkin/budi#232`, governed by ADR-0088 §7._
-
-### Changed
-
-- **Statusline-only surface.** The side panel, session list, vitals grid, and
-  tips feed are retired. 8.1 ships with exactly one status bar item and no
-  additional UI. A sidebar may reappear in a future release if real usage
-  demands it — 8.1 optimises for a quiet, always-on surface.
-- **Provider-scoped to `cursor`.** Every status bar reading comes from
-  `GET /analytics/statusline?provider=cursor`, so Cursor spend is never
-  blended with Claude Code, Codex, or Copilot CLI usage (ADR-0088 §7).
-- **Rolling 1d / 7d / 30d windows.** Numbers now match the Claude Code
-  statusline byte-for-byte: `budi · $X 1d · $Y 7d · $Z 30d`. The windows are
-  rolling (last 24h, last 7d, last 30d), not calendar — same shift as
-  `budi statusline --format claude`. The contract is pinned in
-  [`docs/statusline-contract.md`](https://github.com/siropkin/budi/blob/main/docs/statusline-contract.md).
-- **Click-through mirrors Claude Code.** Clicking the status bar item opens
-  `<cloud>/dashboard/sessions` when there is an active Cursor session and
-  `<cloud>/dashboard` otherwise, matching the Claude Code statusline URL
-  composition in `crates/budi-cli/src/commands/statusline.rs`.
-- **Green-circle brand on the marketplace tile.** The extension now carries
-  the same green-dot icon used on getbudi.dev (`#22c55e`).
+_First Marketplace release._
 
 ### Added
 
-- `budi.cloudEndpoint` setting (default `https://app.getbudi.dev`) so the
-  click-through URL can be pointed at self-hosted or staging cloud
-  deployments.
-- Graceful legacy fallback. When talking to a pre-#224 daemon that has not
-  yet shipped `cost_1d` / `cost_7d` / `cost_30d`, the extension reads the
-  deprecated `today_cost` / `week_cost` / `month_cost` aliases (which the
-  daemon still populates with the same rolling values for one release).
+- Initial publish from the `siropkin/budi` monorepo after extraction completed under ADR-0086.
+- Status bar item with aggregated session health (green / yellow / red circles) and today's cost, session-detail side panel, and workspace-signal file write.
 
-### Removed
-
-- `Budi: Select Session` command. Session pinning was a side-panel feature;
-  the statusline is always the aggregated view.
-- `Budi: Toggle Health Panel` command and `budi.healthPanel` view.
-- `Budi: Open Session Health` command.
-- `fetchSessionHealth`, `fetchRecentSessions`, `aggregateHealth`, and
-  `splitSessionsByDay` client helpers (unused without the side panel).
-
-### Notes
-
-- The `cursor-sessions.json` workspace-signal contract (v1, ADR-0086 §3.4)
-  is unchanged — the extension still writes the active workspace path so
-  the daemon can correlate proxy events.
-- The minimum supported daemon `api_version` is `1`; the extension shows a
-  one-time warning on startup if the local daemon is older and directs the
-  user to `budi update` / reinstall.
-- Public-site sync for screenshots and copy is tracked in
-  `siropkin/budi#296`.
-
-## 1.0.1 — Release hygiene
-
-- Treat "already published" as a successful outcome in the release workflow
-  to keep re-runs idempotent (`siropkin/budi-cursor#2`, `siropkin/budi-cursor#3`).
-
-## 1.0.0 — First Marketplace release
-
-- Initial publish from the `siropkin/budi` monorepo after extraction
-  completed under ADR-0086.
-- Status bar item with aggregated session health (green / yellow / red
-  circles) and today's cost, session-detail side panel, and workspace-signal
-  file write.
+[Unreleased]: https://github.com/siropkin/budi-cursor/compare/v1.5.3...HEAD
+[1.5.3]: https://github.com/siropkin/budi-cursor/compare/v1.5.2...v1.5.3
+[1.5.2]: https://github.com/siropkin/budi-cursor/compare/v1.5.1...v1.5.2
+[1.5.1]: https://github.com/siropkin/budi-cursor/compare/v1.5.0...v1.5.1
+[1.5.0]: https://github.com/siropkin/budi-cursor/compare/v1.4.1...v1.5.0
+[1.4.1]: https://github.com/siropkin/budi-cursor/compare/v1.4.0...v1.4.1
+[1.4.0]: https://github.com/siropkin/budi-cursor/compare/v1.3.3...v1.4.0
+[1.3.3]: https://github.com/siropkin/budi-cursor/compare/v1.3.2...v1.3.3
+[1.3.2]: https://github.com/siropkin/budi-cursor/compare/v1.3.1...v1.3.2
+[1.3.1]: https://github.com/siropkin/budi-cursor/compare/v1.3.0...v1.3.1
+[1.3.0]: https://github.com/siropkin/budi-cursor/compare/v1.0.1...v1.3.0
+[1.0.1]: https://github.com/siropkin/budi-cursor/compare/v1.0.0...v1.0.1
+[1.0.0]: https://github.com/siropkin/budi-cursor/releases/tag/v1.0.0
