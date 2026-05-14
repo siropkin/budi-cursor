@@ -101,7 +101,6 @@
     "@typescript-eslint/parser": "^8.46.0",
     "@vscode/vsce": "^3.7.1",
     "eslint": "^9.37.0",
-    "eslint-config-prettier": "^10.1.8",
     "prettier": "^3.6.2",
     "typescript": "^5.4.0",
     "vitest": "^3.2.4"

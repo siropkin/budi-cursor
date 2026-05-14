@@ -14,10 +14,8 @@
  * the public site does not drift.
  */
 
-export type InstallPlatform = "macos" | "linux" | "windows";
-
 export interface InstallCommand {
-  platform: InstallPlatform;
+  platform: "macos" | "linux" | "windows";
   /** Short display label ("macOS / Linux", "Windows (PowerShell)"). */
   label: string;
   /** The shell in which the command must run. */
