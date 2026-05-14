@@ -203,6 +203,35 @@ export function formatCostLine(costs: ResolvedCosts): string {
   return parts.join(" · ");
 }
 
+/**
+ * Stable signature for a stale-daemon detection, derived from the
+ * fields the toast surfaces to the user (`version` and `api_version`).
+ * `extension.ts` records the last signature it warned about in
+ * `globalState` so the upgrade toast fires once per install per unique
+ * stale daemon — not once per reload window
+ * (siropkin/budi-cursor#79). A user who upgrades from one stale daemon
+ * to another (e.g. 8.4.0 → 8.4.1, both still `api_version=1`) gets a
+ * fresh warning because the signature changes; a user who dismisses
+ * and reloads against the same daemon does not.
+ */
+export function versionStaleSignature(health: DaemonHealth): string {
+  return `${health.version}|${health.api_version}`;
+}
+
+/**
+ * Pure decision for "should the version-stale toast fire now?" — the
+ * regression-test seam for the once-per-install contract
+ * (siropkin/budi-cursor#79). `lastWarnedSignature` is whatever the
+ * extension previously persisted to `globalState`; `undefined` means
+ * "never warned on this install."
+ */
+export function shouldShowVersionStaleToast(
+  health: DaemonHealth,
+  lastWarnedSignature: string | undefined,
+): boolean {
+  return versionStaleSignature(health) !== lastWarnedSignature;
+}
+
 export type HealthState =
   | "green"
   | "yellow"
