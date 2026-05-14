@@ -117,7 +117,7 @@ Reload your editor: **Cmd+Shift+P** → **Developer: Reload Window**.
 
 **Status bar says `budi · update needed`**
 
-The local daemon is older than this extension's required `api_version`. Run `budi update` (or `brew upgrade budi`) and reload the editor window. The tooltip names the installed daemon version, the required `api_version`, and the one-line upgrade command. v1.5.x requires a v8.4.2-or-newer daemon.
+The local daemon is older than this extension's required `api_version`. Run `budi update` (or `brew upgrade budi`) and reload the editor window. The tooltip names the installed daemon version, the required `api_version`, and the one-line upgrade command.
 
 ## Ecosystem
 
