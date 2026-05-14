@@ -35,8 +35,39 @@ jobs:
       - name: Check formatting
         run: npm run format:check
 
-      - name: Test
-        run: npm run test
+      - name: Test (with coverage gate)
+        run: npm run test:coverage
+
+      - name: Surface coverage summary
+        if: always()
+        run: |
+          set -e
+          if [ -f coverage/coverage-summary.json ]; then
+            echo "## Coverage" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "| File | % Stmts | % Branch | % Funcs | % Lines |" >> "$GITHUB_STEP_SUMMARY"
+            echo "|------|---------|----------|---------|---------|" >> "$GITHUB_STEP_SUMMARY"
+            node -e "
+              const s = require('./coverage/coverage-summary.json');
+              const fmt = v => (typeof v === 'number' ? v.toFixed(2) : v?.pct?.toFixed(2) ?? '–');
+              const rows = Object.entries(s).map(([k, v]) => {
+                const label = k === 'total' ? '**All files**' : k.replace(process.cwd() + '/', '');
+                return \`| \${label} | \${fmt(v.statements)} | \${fmt(v.branches)} | \${fmt(v.functions)} | \${fmt(v.lines)} |\`;
+              });
+              console.log(rows.join('\n'));
+            " >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "coverage/coverage-summary.json not found — skipping summary" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: coverage/
+          if-no-files-found: ignore
+          retention-days: 14
 
       - name: Build and package
         run: |
