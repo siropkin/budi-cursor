@@ -15,6 +15,8 @@ import {
   isLoopbackDaemonUrl,
   MIN_API_VERSION,
   resolveCosts,
+  shouldShowVersionStaleToast,
+  versionStaleSignature,
 } from "./budiClient";
 import { upgradeCommandForPlatform } from "./installCommands";
 import { clearActiveWorkspace, writeActiveWorkspace } from "./sessionStore";
@@ -27,6 +29,12 @@ import {
 } from "./welcomeView";
 
 const EVER_SAW_DAEMON_KEY = "budi.everSawDaemon";
+// Per siropkin/budi-cursor#79: the upgrade toast must fire at most once
+// per install per unique stale-daemon signature, not once per reload.
+// Stored in `context.globalState` and keyed by `versionStaleSignature`
+// so a user who later bumps to a new (still stale) daemon gets a fresh
+// warning, while a user who dismisses against the same daemon does not.
+const LAST_WARNED_STALE_KEY = "budi.lastWarnedStaleSignature";
 
 let statusBarItem: vscode.StatusBarItem;
 let dataPollTimer: ReturnType<typeof setInterval> | undefined;
@@ -35,7 +43,7 @@ let upgradeChannel: vscode.OutputChannel | undefined;
 let refreshInFlight = false;
 let pendingRefreshDaemonUrl: string | undefined;
 let cachedStatusline: StatuslineData | null = null;
-let apiVersionWarningShown = false;
+let lastWarnedStaleSignature: string | undefined;
 let daemonOfflineWarningLogged = false;
 let lastState: HealthState = "gray";
 let everSawDaemon = false;
@@ -47,6 +55,7 @@ export function activate(context: vscode.ExtensionContext): void {
   log.appendLine(`[budi] activated at ${new Date().toISOString()}`);
 
   everSawDaemon = context.globalState.get<boolean>(EVER_SAW_DAEMON_KEY, false);
+  lastWarnedStaleSignature = context.globalState.get<string>(LAST_WARNED_STALE_KEY);
 
   // Derive the wire surface from `vscode.env.appName` once at activation
   // (siropkin/budi-cursor#64). `appName` is `"Cursor"` inside Cursor,
@@ -246,25 +255,29 @@ function restartDataPoll(
 }
 
 /**
- * Fire the actionable upgrade toast at most once per session
- * (siropkin/budi-cursor#51). The toast offers two buttons:
+ * Fire the actionable upgrade toast at most once per install per unique
+ * stale-daemon signature (siropkin/budi-cursor#51, #79). The toast
+ * offers two buttons:
  *
  * - **Show update command** — opens an output channel pre-populated with
  *   `budi update` plus the platform-appropriate fallback (`brew upgrade`
  *   on macOS, the standalone install script on Linux/Windows). We never
  *   execute the command on the user's behalf — daemon installs span
  *   Homebrew, manual binaries, and corp-managed paths.
- * - **Dismiss** — silences the toast for the rest of the session. The
- *   bar copy stays as `budi · update needed` so the surface does not
- *   pretend the daemon is fine.
+ * - **Dismiss** — silences the toast for this install against this exact
+ *   stale daemon. The bar copy stays as `budi · update needed` so the
+ *   surface does not pretend the daemon is fine. A future daemon with a
+ *   different version / api_version pair will re-fire the toast.
  *
  * `budi.suppressUpdatePrompt = true` skips the toast entirely (centrally
  * managed daemons), but the bar copy and tooltip still surface the
  * stale-version state.
  */
-function maybeShowVersionStaleToast(health: DaemonHealth): void {
-  if (apiVersionWarningShown) return;
-  apiVersionWarningShown = true;
+function maybeShowVersionStaleToast(health: DaemonHealth, context: vscode.ExtensionContext): void {
+  if (!shouldShowVersionStaleToast(health, lastWarnedStaleSignature)) return;
+  const signature = versionStaleSignature(health);
+  lastWarnedStaleSignature = signature;
+  void context.globalState.update(LAST_WARNED_STALE_KEY, signature);
   if (suppressUpdatePrompt) {
     log.appendLine(
       "[budi] version-stale detected but budi.suppressUpdatePrompt=true — toast suppressed.",
@@ -391,7 +404,7 @@ async function refreshData(
   }
 
   if (state === "version-stale" && health) {
-    maybeShowVersionStaleToast(health);
+    maybeShowVersionStaleToast(health, context);
   }
 
   // Drive the welcome view off the polled state so it stays in sync

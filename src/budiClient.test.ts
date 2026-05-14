@@ -22,6 +22,8 @@ import {
   isLoopbackDaemonUrl,
   MIN_API_VERSION,
   resolveCosts,
+  shouldShowVersionStaleToast,
+  versionStaleSignature,
   type DaemonHealth,
   type StatuslineData,
 } from "./budiClient";
@@ -312,6 +314,116 @@ describe("buildTooltip", () => {
 describe("MIN_API_VERSION", () => {
   it("matches the daemon's API_VERSION advertised by 8.4.2 (siropkin/budi#714, siropkin/budi-cursor#55)", () => {
     expect(MIN_API_VERSION).toBe(3);
+  });
+});
+
+describe("versionStaleSignature / shouldShowVersionStaleToast (siropkin/budi-cursor#79)", () => {
+  const stale: DaemonHealth = { ok: true, version: "8.4.1", api_version: 1 };
+
+  it("encodes both version and api_version so different stale daemons get distinct signatures", () => {
+    expect(versionStaleSignature({ ok: true, version: "8.4.0", api_version: 1 })).toBe("8.4.0|1");
+    expect(versionStaleSignature(stale)).toBe("8.4.1|1");
+    expect(versionStaleSignature({ ok: true, version: "8.4.1", api_version: 2 })).toBe("8.4.1|2");
+  });
+
+  it("fires the toast the first time we see a stale daemon on this install", () => {
+    expect(shouldShowVersionStaleToast(stale, undefined)).toBe(true);
+  });
+
+  it("suppresses the toast on the next reload when the same stale daemon is re-detected — the once-per-install contract", () => {
+    const signature = versionStaleSignature(stale);
+    expect(shouldShowVersionStaleToast(stale, signature)).toBe(false);
+  });
+
+  it("re-fires the toast when the user upgrades from one stale daemon to another (e.g. 8.4.0 → 8.4.1, both api_version=1)", () => {
+    const previous = versionStaleSignature({ ok: true, version: "8.4.0", api_version: 1 });
+    expect(shouldShowVersionStaleToast(stale, previous)).toBe(true);
+  });
+
+  it("re-fires the toast when the daemon's api_version moves but is still below MIN_API_VERSION", () => {
+    const previous = versionStaleSignature({ ok: true, version: "8.4.1", api_version: 1 });
+    const stillStale: DaemonHealth = { ok: true, version: "8.4.1", api_version: 2 };
+    expect(shouldShowVersionStaleToast(stillStale, previous)).toBe(true);
+  });
+});
+
+describe("daemon-too-old regression (siropkin/budi-cursor#79) — end-to-end version-stale path", () => {
+  let server: http.Server;
+  let baseUrl: string;
+  let handler: (req: http.IncomingMessage, res: http.ServerResponse) => void;
+
+  beforeEach(async () => {
+    handler = (_req, res) => {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end("{}");
+    };
+    server = http.createServer((req, res) => handler(req, res));
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const { port } = server.address() as AddressInfo;
+    baseUrl = `http://127.0.0.1:${port}`;
+  });
+
+  afterEach(async () => {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  });
+
+  it("an 8.4.1 daemon (api_version=1) is fetched, classified version-stale, rendered as 'budi · update needed', and tooltip + toast-decision all point at `budi update`", async () => {
+    handler = (req, res) => {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      if (req.url === "/health") {
+        res.end(JSON.stringify({ ok: true, version: "8.4.1", api_version: 1 }));
+        return;
+      }
+      // The polling loop keeps calling /analytics/statusline even when
+      // the daemon is too old (siropkin/budi-cursor#79 acceptance #3 —
+      // "don't crash, don't go silent"). The daemon answers normally;
+      // the extension's gate is the only thing that suppresses the
+      // render.
+      res.end(JSON.stringify({ cost_1d: 1.23, cost_7d: 4.56, cost_30d: 7.89 }));
+    };
+
+    const health = await fetchDaemonHealth(baseUrl);
+    expect(health).toEqual({ ok: true, version: "8.4.1", api_version: 1 });
+
+    const statusline = await fetchStatusline(baseUrl, "cursor");
+    expect(statusline).not.toBeNull();
+
+    const state = deriveHealthState(health, statusline, true);
+    expect(state).toBe("version-stale");
+
+    expect(buildStatusText(state, statusline)).toBe("budi · update needed");
+
+    const tip = buildTooltip(state, statusline, "https://app.getbudi.dev", health);
+    expect(tip).toContain("budi update needed");
+    expect(tip).toContain("8.4.1");
+    expect(tip).toContain("api_version 1");
+    expect(tip).toContain(`Required api_version: ${MIN_API_VERSION}`);
+    expect(tip).toContain("budi update");
+
+    expect(shouldShowVersionStaleToast(health!, undefined)).toBe(true);
+    expect(shouldShowVersionStaleToast(health!, versionStaleSignature(health!))).toBe(false);
+  });
+
+  it("a stale daemon never trips the unreachable path — the extension can tell 'too old' apart from 'down', and the polling loop keeps fetching the (ignored) statusline", async () => {
+    let statuslineCalls = 0;
+    handler = (req, res) => {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      if (req.url === "/health") {
+        res.end(JSON.stringify({ ok: true, version: "8.4.0", api_version: 1 }));
+        return;
+      }
+      statuslineCalls += 1;
+      res.end(JSON.stringify({ cost_1d: 0, cost_7d: 0, cost_30d: 0 }));
+    };
+
+    for (let i = 0; i < 3; i++) {
+      const health = await fetchDaemonHealth(baseUrl);
+      const statusline = await fetchStatusline(baseUrl, "cursor");
+      const state = deriveHealthState(health, statusline, true);
+      expect(state).toBe("version-stale");
+      expect(state).not.toBe("unreachable");
+    }
+    expect(statuslineCalls).toBe(3);
   });
 });
 
