@@ -24,6 +24,7 @@ npm ci
 npm run build         # tsc to out/
 npm run watch         # tsc in watch mode
 npm test              # Vitest
+npm run test:coverage # Vitest + v8 coverage, fails on threshold drop
 npm run lint
 npm run format:check
 npm run package       # produce cursor-budi.vsix via vsce

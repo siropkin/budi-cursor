@@ -91,14 +91,16 @@
     "lint": "eslint \"src/**/*.ts\"",
     "format": "prettier --write \"src/**/*.ts\" \"*.json\" \"README.md\"",
     "format:check": "prettier --check \"src/**/*.ts\" \"*.json\" \"README.md\"",
-    "test": "vitest run --exclude \"out/**\"",
-    "test:watch": "vitest --exclude \"out/**\""
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
   },
   "devDependencies": {
     "@types/node": "^25.5.0",
     "@types/vscode": "^1.85.0",
     "@typescript-eslint/eslint-plugin": "^8.46.0",
     "@typescript-eslint/parser": "^8.46.0",
+    "@vitest/coverage-v8": "^3.2.4",
     "@vscode/vsce": "^3.7.1",
     "eslint": "^9.37.0",
     "prettier": "^3.6.2",
