@@ -1,11 +1,8 @@
 import * as vscode from "vscode";
+import type { DaemonHealth, HealthState, StatuslineData, Surface } from "./budiClient";
 import {
-  DaemonHealth,
   DEFAULT_CLOUD_ENDPOINT,
   DEFAULT_DAEMON_URL,
-  HealthState,
-  StatuslineData,
-  Surface,
   buildStatusText,
   buildTooltip,
   buildTooltipHeader,
@@ -71,8 +68,9 @@ export function activate(context: vscode.ExtensionContext): void {
   log.appendLine(
     `[budi] workspaceFolders = ${folders?.map((f) => f.uri.fsPath).join(", ") ?? "none"}`,
   );
-  if (folders && folders.length > 0) {
-    writeActiveWorkspace(folders[0].uri.fsPath);
+  const firstFolder = folders?.[0];
+  if (firstFolder) {
+    writeActiveWorkspace(firstFolder.uri.fsPath);
   }
 
   statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, -100);

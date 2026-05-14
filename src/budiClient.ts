@@ -155,7 +155,7 @@ export function formatProviderName(provider: string): string {
     default:
       return provider
         .split("_")
-        .map((part) => (part.length > 0 ? part[0].toUpperCase() + part.slice(1) : part))
+        .map((part) => (part.length > 0 ? part.charAt(0).toUpperCase() + part.slice(1) : part))
         .join(" ");
   }
 }
@@ -282,8 +282,9 @@ export function clickUrl({ cloudEndpoint, statusline }: ClickUrlOptions): string
  * `Tracking: …` line below carries the detail.
  */
 export function buildTooltipHeader(contributing: readonly string[]): string {
-  if (contributing.length === 1 && contributing[0] !== CURSOR_PROVIDER) {
-    return `budi — Cursor usage (${formatProviderName(contributing[0])})`;
+  const [only] = contributing;
+  if (contributing.length === 1 && only !== undefined && only !== CURSOR_PROVIDER) {
+    return `budi — Cursor usage (${formatProviderName(only)})`;
   }
   return "budi — Cursor usage";
 }
