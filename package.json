@@ -2,7 +2,7 @@
   "name": "budi",
   "displayName": "budi — AI Coding Cost Tracker",
   "description": "Track your AI coding spend in the Cursor / VS Code status bar — 1d / 7d / 30d at a glance. Learn more at https://getbudi.dev",
-  "version": "1.5.3",
+  "version": "1.5.4",
   "publisher": "siropkin",
   "license": "MIT",
   "icon": "assets/icon.png",
