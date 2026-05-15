@@ -29,35 +29,53 @@ interface CursorSessionsV1 {
   updated_at: string;
 }
 
-const STATE_DIR = path.join(os.homedir(), ".local", "share", "budi");
-const SESSION_FILE = path.join(STATE_DIR, "cursor-sessions.json");
+export const DEFAULT_STATE_DIR = path.join(os.homedir(), ".local", "share", "budi");
+export const DEFAULT_SESSION_FILE = path.join(DEFAULT_STATE_DIR, "cursor-sessions.json");
 
 /**
  * Write the cursor-sessions.json v1 contract file to signal the active
  * workspace. Called by the extension on activate and when workspace changes.
+ *
+ * No-op when `workspacePath` is falsy (non-workspace activations).
+ * Writes are atomic: a temp file is written then renamed over the target so
+ * a crash mid-write can never leave a half-written JSON behind.
  */
-export function writeActiveWorkspace(workspacePath: string): void {
+export function writeActiveWorkspace(
+  workspacePath: string,
+  sessionFile: string = DEFAULT_SESSION_FILE,
+): void {
+  if (!workspacePath) return;
+
   const data: CursorSessionsV1 = {
     version: CONTRACT_VERSION,
     active_workspace: path.resolve(workspacePath),
     updated_at: new Date().toISOString(),
   };
 
+  const dir = path.dirname(sessionFile);
+  const tmpFile = `${sessionFile}.${process.pid}.tmp`;
+
   try {
-    fs.mkdirSync(STATE_DIR, { recursive: true });
-    fs.writeFileSync(SESSION_FILE, JSON.stringify(data, null, 2) + "\n");
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(tmpFile, JSON.stringify(data, null, 2) + "\n");
+    fs.renameSync(tmpFile, sessionFile);
   } catch {
     // Best-effort — don't crash the extension if the file can't be written.
+    try {
+      fs.unlinkSync(tmpFile);
+    } catch {
+      // Temp file may not exist; ignore.
+    }
   }
 }
 
 /**
  * Clear the active workspace signal (e.g., on deactivate).
  */
-export function clearActiveWorkspace(): void {
+export function clearActiveWorkspace(sessionFile: string = DEFAULT_SESSION_FILE): void {
   try {
-    if (fs.existsSync(SESSION_FILE)) {
-      fs.unlinkSync(SESSION_FILE);
+    if (fs.existsSync(sessionFile)) {
+      fs.unlinkSync(sessionFile);
     }
   } catch {
     // Best-effort cleanup.
