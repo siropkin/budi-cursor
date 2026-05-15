@@ -1,23 +1,29 @@
 import * as vscode from "vscode";
-import type { DaemonHealth, HealthState, StatuslineData, Surface } from "./budiClient";
 import {
   DEFAULT_CLOUD_ENDPOINT,
   DEFAULT_DAEMON_URL,
-  buildStatusText,
-  buildTooltip,
-  buildTooltipHeader,
-  clickUrl,
-  deriveHealthState,
-  detectSurface,
-  fetchDaemonHealth,
-  fetchStatusline,
   isAllowedCloudEndpoint,
   isLoopbackDaemonUrl,
+} from "./config/endpoints";
+import {
+  deriveHealthState,
   MIN_API_VERSION,
   resolveCosts,
   shouldShowVersionStaleToast,
   versionStaleSignature,
-} from "./budiClient";
+  type HealthState,
+} from "./health/healthState";
+import {
+  detectSurface,
+  fetchDaemonHealth,
+  fetchStatusline,
+  type DaemonHealth,
+  type StatuslineData,
+  type Surface,
+} from "./http/statuslineClient";
+import { clickUrl } from "./render/clickUrl";
+import { buildStatusText } from "./render/statusText";
+import { buildTooltip, buildTooltipHeader } from "./render/tooltip";
 import { upgradeCommandForPlatform } from "./installCommands";
 import { clearActiveWorkspace, writeActiveWorkspace } from "./sessionStore";
 import {
