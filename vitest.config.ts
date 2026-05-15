@@ -10,10 +10,40 @@ export default defineConfig({
       exclude: ["src/**/*.test.ts", "out/**"],
       reportsDirectory: "coverage",
       thresholds: {
-        "src/budiClient.ts": {
-          lines: 99,
-          statements: 99,
-          branches: 95,
+        "src/config/endpoints.ts": {
+          lines: 100,
+          statements: 100,
+          branches: 100,
+          functions: 100,
+        },
+        "src/health/healthState.ts": {
+          lines: 100,
+          statements: 100,
+          branches: 100,
+          functions: 100,
+        },
+        "src/http/statuslineClient.ts": {
+          lines: 97,
+          statements: 97,
+          branches: 90,
+          functions: 100,
+        },
+        "src/render/clickUrl.ts": {
+          lines: 100,
+          statements: 100,
+          branches: 100,
+          functions: 100,
+        },
+        "src/render/statusText.ts": {
+          lines: 100,
+          statements: 100,
+          branches: 90,
+          functions: 100,
+        },
+        "src/render/tooltip.ts": {
+          lines: 100,
+          statements: 100,
+          branches: 90,
           functions: 100,
         },
         "src/extension.ts": {
